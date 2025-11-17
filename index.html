@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusMode - Premium Learning Experience</title>
+    <meta name="description" content="Aplikasi premium untuk meningkatkan fokus belajar dengan teknik Pomodoro, pencatatan, dan manajemen waktu">
+    <meta name="theme-color" content="#74b9ff">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" href="src/icons/icon-72x72.png" type="image/png">
+    <link rel="apple-touch-icon" href="src/icons/icon-192x192.png">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="src/styles/styles.css">
+    <link rel="stylesheet" href="src/styles/responsive.css">
+</head>
+<body>
+    <!-- Loading Indicator -->
+    <div id="loading-indicator" class="loading">
+        <div class="loading-spinner"></div>
+        <p>Memuat Pengalaman Premium...</p>
+    </div>
+
+    <!-- Authentication Container -->
+    <div id="auth-container" class="hidden">
+        <!-- Login/Register pages will be rendered here -->
+    </div>
+
+    <!-- Main Application -->
+    <div id="app" class="hidden">
+        <!-- Premium Header -->
+        <header class="premium-header">
+            <div class="container">
+                <div class="header-content">
+                    <a href="#/" class="logo">
+                        <i class="fas fa-crown"></i>
+                        <span>FocusMode</span>
+                    </a>
+                    <nav>
+                        <ul>
+                            <li><a href="#/">Beranda</a></li>
+                            <li><a href="#/fitur">Fitur</a></li>
+                            <li><a href="#/focus-mode">Focus Mode</a></li>
+                            <li><a href="#/sesi-belajar">Sesi Belajar</a></li>
+                            <li><a href="#/catatan">Catatan</a></li>
+                            <li><a href="#/rak-buku">Rak Buku</a></li>
+                        </ul>
+                    </nav>
+                    <div class="user-info">
+                        <div class="user-profile" id="user-profile">
+                            <div class="user-avatar" id="user-avatar">
+                                <!-- Avatar akan diisi oleh JavaScript -->
+                            </div>
+                            <div class="user-details">
+                                <span class="user-name" id="user-name">User</span>
+                                <button class="logout-btn" id="logout-btn">
+                                    <i class="fas fa-sign-out-alt"></i> Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <div id="main-content">
+                <!-- Pages will be rendered here -->
+            </div>
+        </main>
+
+        <!-- Premium Footer -->
+        <footer class="premium-footer">
+            <div class="container">
+                <div class="footer-content">
+                    <p class="footer-copyright">
+                        &copy; 2024 FocusMode Premium - Student Distraction-Free Learning
+                    </p>
+                    <p class="footer-message">
+                        Dibuat dengan <i class="fas fa-heart"></i> untuk membantu siswa Indonesia belajar lebih fokus dan produktif
+                    </p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Install Button -->
+    <button id="install-button" class="install-btn hidden">
+        <i class="fas fa-download"></i> Install App
+    </button>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- JavaScript Files -->
+    <script type="module" src="main.js"></script>
+</body>
+</html>
