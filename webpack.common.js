@@ -1,4 +1,5 @@
 import HtmlWebpackPlugin from 'html-webpack-plugin';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +15,13 @@ export default {
       template: './index.html',
       filename: 'index.html',
       chunks: ['app'],
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: 'manifest.json', to: 'manifest.json' },
+        { from: 'src/icons', to: 'icons' },
+        { from: 'src/screenshots', to: 'screenshots' },
+      ],
     }),
   ],
   module: {

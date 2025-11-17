@@ -53,13 +53,13 @@
   "lang": "id-ID",
   "screenshots": [
     {
-      "src": "src/screenshots/home.png",
+      "src": "/screenshots/home.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"
     },
     {
-      "src": "src/screenshots/focus-mode.png",
+      "src": "/screenshots/focus-mode.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"

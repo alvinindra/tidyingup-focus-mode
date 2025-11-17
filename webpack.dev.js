@@ -10,9 +10,17 @@ export default merge(common, {
   mode: 'development',
   devtool: 'inline-source-map',
   devServer: {
-    static: {
-      directory: resolve(__dirname, 'dist'),
-    },
+    static: [
+      {
+        directory: resolve(__dirname, 'dist'),
+      },
+      {
+        directory: resolve(__dirname, '.'),
+        publicPath: '/',
+        serveIndex: false,
+        watch: true,
+      },
+    ],
     port: 9000,
     hot: true,
     open: true,
@@ -24,7 +32,7 @@ export default merge(common, {
         warnings: false,
       },
     },
-    watchFiles: ['index.html', '**/*.css', '**/*.js'],
+    watchFiles: ['index.html', '**/*.css', '**/*.js', 'manifest.json'],
   },
   output: {
     filename: '[name].bundle.js',

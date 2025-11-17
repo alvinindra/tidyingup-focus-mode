@@ -180,7 +180,7 @@
   .form-group textarea,
   .form-group select {
     background: #636e72;
-    color: white;
+    color: black;
     border-color: #74b9ff;
   }
 }

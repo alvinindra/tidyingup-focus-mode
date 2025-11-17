@@ -1,28 +1,30 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FocusMode - Premium Learning Experience</title>
-    <meta name="description" content="Aplikasi premium untuk meningkatkan fokus belajar dengan teknik Pomodoro, pencatatan, dan manajemen waktu">
+    <meta name="description"
+        content="Aplikasi premium untuk meningkatkan fokus belajar dengan teknik Pomodoro, pencatatan, dan manajemen waktu">
     <meta name="theme-color" content="#74b9ff">
-    
+
     <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
-    
+    <link rel="manifest" href="/manifest.json">
+
     <!-- Icons -->
-    <link rel="icon" href="src/icons/icon-72x72.png" type="image/png">
-    <link rel="apple-touch-icon" href="src/icons/icon-192x192.png">
-    
+    <link rel="icon" href="/icons/icon-72x72.png" type="image/png">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
+
     <!-- CSS Files -->
-    <link rel="stylesheet" href="src/styles/styles.css">
-    <link rel="stylesheet" href="src/styles/responsive.css">
+    <!-- Webpack will inject the CSS bundles automatically -->
 </head>
+
 <body>
     <!-- Loading Indicator -->
     <div id="loading-indicator" class="loading">
@@ -87,7 +89,8 @@
                         &copy; 2024 FocusMode Premium - Student Distraction-Free Learning
                     </p>
                     <p class="footer-message">
-                        Dibuat dengan <i class="fas fa-heart"></i> untuk membantu siswa Indonesia belajar lebih fokus dan produktif
+                        Dibuat dengan <i class="fas fa-heart"></i> untuk membantu siswa Indonesia belajar lebih fokus
+                        dan produktif
                     </p>
                 </div>
             </div>
@@ -105,4 +108,5 @@
     <!-- JavaScript Files -->
     <script type="module" src="main.js"></script>
 </body>
+
 </html>
