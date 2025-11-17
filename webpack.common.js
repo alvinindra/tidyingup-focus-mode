@@ -21,6 +21,7 @@ export default {
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'src/icons', to: 'icons' },
         { from: 'src/screenshots', to: 'screenshots' },
+        { from: '_redirects', to: '_redirects', noErrorOnMissing: true },
       ],
     }),
   ],
