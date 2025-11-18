@@ -1,0 +1,188 @@
+/* ==================== OFFLINE INDICATOR ==================== */
+.offline-indicator {
+  position: fixed;
+  bottom: 40px;
+  right: 20px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-lg);
+  padding: 1rem 1.5rem;
+  box-shadow: var(--shadow-medium);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  animation: slideInRight 0.3s ease;
+  transition: all 0.3s ease;
+}
+
+.offline-indicator.online {
+  background: rgba(0, 184, 148, 0.1);
+  border-color: var(--success);
+}
+
+.offline-indicator.offline {
+  background: rgba(225, 112, 85, 0.1);
+  border-color: var(--danger);
+}
+
+.offline-indicator-icon {
+  font-size: 1.2rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.offline-indicator.online .offline-indicator-icon {
+  color: var(--success);
+}
+
+.offline-indicator.offline .offline-indicator-icon {
+  color: var(--danger);
+}
+
+.offline-indicator-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.offline-indicator-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.offline-indicator.online .offline-indicator-title {
+  color: var(--success);
+}
+
+.offline-indicator.offline .offline-indicator-title {
+  color: var(--danger);
+}
+
+.offline-indicator-message {
+  font-size: 0.75rem;
+  color: var(--dark);
+  opacity: 0.8;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* PWA Install Indicator */
+.pwa-install-indicator {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gradient-primary);
+  color: white;
+  padding: 1rem 2rem;
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-large);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 1000;
+  animation: slideUp 0.3s ease;
+}
+
+.pwa-install-indicator button {
+  background: white;
+  color: var(--primary);
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: var(--border-radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.pwa-install-indicator button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translate(-50%, 100%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+/* Service Worker Update Notification */
+.sw-update-notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--accent);
+  color: white;
+  padding: 1rem 1.5rem;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-large);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  animation: slideInRight 0.3s ease;
+}
+
+.sw-update-notification button {
+  background: white;
+  color: var(--accent);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.sw-update-notification button:hover {
+  transform: scale(1.05);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .offline-indicator {
+    top: 60px;
+    right: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .pwa-install-indicator {
+    bottom: 10px;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.85rem;
+  }
+
+  .sw-update-notification {
+    bottom: 10px;
+    right: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+  }
+}

@@ -19,6 +19,7 @@ export default {
     new CopyWebpackPlugin({
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
+        { from: 'sw.js', to: 'sw.js' },
         { from: 'src/icons', to: 'icons' },
         { from: 'src/screenshots', to: 'screenshots' },
         { from: '_redirects', to: '_redirects', noErrorOnMissing: true },
