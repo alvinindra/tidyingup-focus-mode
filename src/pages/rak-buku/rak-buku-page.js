@@ -1,3 +1,4 @@
+import { Api } from '../../data/api.js';
 import Database from '../../js/db.js';
 
 class RakBukuPage {
@@ -67,12 +68,7 @@ class RakBukuPage {
                 <option value="fiction">Fiksi</option>
                 <option value="non-fiction">Non-Fiksi</option>
                 <option value="reference">Referensi</option>
-                <option value="other">Lainnya</option>
               </select>
-            </div>
-            <div class="form-group">
-              <label for="bookYear">Tahun Terbit</label>
-              <input type="number" id="bookYear" placeholder="Masukkan tahun terbit" required>
             </div>
             <div class="form-group">
               <label for="bookIsComplete">Status Baca</label>
@@ -96,19 +92,9 @@ class RakBukuPage {
 
   async loadBooks() {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch('http://localhost:3307/api/books', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          this.books = await response.json();
-          return;
-        }
+      if (Api.auth.isLoggedIn()) {
+        this.books = await Api.books.getAll();
+        return;
       }
 
       // Fallback to local DB
@@ -136,23 +122,9 @@ class RakBukuPage {
 
   async saveBook(bookData) {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch('http://localhost:3307/api/books', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(bookData)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          return result.id;
-        } else {
-          throw new Error('Failed to save book');
-        }
+      if (Api.auth.isLoggedIn()) {
+        const result = await Api.books.create(bookData);
+        return result.id;
       } else {
         // Fallback to local DB
         return await Database.add('books', bookData);
@@ -166,20 +138,8 @@ class RakBukuPage {
 
   async updateBook(bookData) {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch(`http://localhost:3307/api/books/${bookData.id}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(bookData)
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to update book');
-        }
+      if (Api.auth.isLoggedIn()) {
+        await Api.books.update(bookData.id, bookData);
       } else {
         // Fallback to local DB
         await Database.update('books', bookData);
@@ -193,19 +153,8 @@ class RakBukuPage {
 
   async deleteBook(bookId) {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch(`http://localhost:3307/api/books/${bookId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to delete book');
-        }
+      if (Api.auth.isLoggedIn()) {
+        await Api.books.delete(bookId);
       } else {
         // Fallback to local DB
         await Database.delete('books', bookId);
@@ -219,19 +168,8 @@ class RakBukuPage {
 
   async toggleBookStatus(bookId) {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch(`http://localhost:3307/api/books/${bookId}/toggle`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to toggle book status');
-        }
+      if (Api.auth.isLoggedIn()) {
+        await Api.books.toggleStatus(bookId);
       } else {
         // Fallback to local DB
         const book = this.books.find(b => b.id === bookId);
@@ -258,12 +196,12 @@ class RakBukuPage {
     });
 
     // Search functionality
-    document.getElementById('bookSearch').addEventListener('input', (e) => {
+    document.getElementById('bookSearch').addEventListener('input', e => {
       this.searchBooks(e.target.value);
     });
 
     // Book form
-    document.getElementById('bookForm').addEventListener('submit', (e) => {
+    document.getElementById('bookForm').addEventListener('submit', e => {
       e.preventDefault();
       this.handleBookSubmit();
     });
@@ -274,7 +212,7 @@ class RakBukuPage {
     });
 
     // Click outside modal to close
-    window.addEventListener('click', (e) => {
+    window.addEventListener('click', e => {
       if (e.target === document.getElementById('bookModal')) {
         this.closeBookModal();
       }
@@ -297,8 +235,7 @@ class RakBukuPage {
       author: document.getElementById('bookAuthor').value,
       description: document.getElementById('bookDescription').value,
       category: document.getElementById('bookCategory').value,
-      year: parseInt(document.getElementById('bookYear').value),
-      is_complete: document.getElementById('bookIsComplete').value === 'true'
+      is_complete: document.getElementById('bookIsComplete').value === 'true',
     };
 
     try {
@@ -313,8 +250,12 @@ class RakBukuPage {
   }
 
   renderBooks() {
-    const unreadBooks = this.books.filter(book => !book.is_complete && !book.isComplete);
-    const readBooks = this.books.filter(book => book.is_complete || book.isComplete);
+    const unreadBooks = this.books.filter(
+      book => !book.is_complete && !book.isComplete
+    );
+    const readBooks = this.books.filter(
+      book => book.is_complete || book.isComplete
+    );
 
     this.renderBookList('unreadBooks', unreadBooks);
     this.renderBookList('readBooks', readBooks);
@@ -322,7 +263,7 @@ class RakBukuPage {
 
   renderBookList(containerId, books) {
     const container = document.getElementById(containerId);
-    
+
     if (books.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
@@ -333,25 +274,36 @@ class RakBukuPage {
       return;
     }
 
-    container.innerHTML = books.map(book => `
+    container.innerHTML = books
+      .map(
+        book => `
       <div class="book-card" data-id="${book.id}">
         <div class="book-info">
           <h4>${this.escapeHtml(book.title)}</h4>
           <p><strong>Penulis:</strong> ${this.escapeHtml(book.author)}</p>
-          <p><strong>Tahun:</strong> ${book.year}</p>
-          ${book.description ? `<p><strong>Deskripsi:</strong> ${this.escapeHtml(book.description)}</p>` : ''}
-          <p><strong>Kategori:</strong> ${this.getCategoryLabel(book.category)}</p>
+          ${
+            book.description
+              ? `<p><strong>Deskripsi:</strong> ${this.escapeHtml(
+                  book.description
+                )}</p>`
+              : ''
+          }
+          <p><strong>Kategori:</strong> ${this.getCategoryLabel(
+            book.category
+          )}</p>
         </div>
         <div class="book-actions">
           <button class="action-btn move-btn" data-id="${book.id}">
-            ${(book.is_complete || book.isComplete) ? 'Belum Selesai' : 'Selesai'}
+            ${book.is_complete || book.isComplete ? 'Belum Selesai' : 'Selesai'}
           </button>
           <button class="action-btn delete-btn" data-id="${book.id}">
             <i class="fas fa-trash"></i> Hapus
           </button>
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
     // Add event listeners
     this.attachBookEventListeners(containerId);
@@ -359,21 +311,20 @@ class RakBukuPage {
 
   getCategoryLabel(category) {
     const labels = {
-      'academic': 'Akademik',
-      'fiction': 'Fiksi',
+      academic: 'Akademik',
+      fiction: 'Fiksi',
       'non-fiction': 'Non-Fiksi',
-      'reference': 'Referensi',
-      'other': 'Lainnya'
+      reference: 'Referensi',
     };
     return labels[category] || category;
   }
 
   attachBookEventListeners(containerId) {
     const container = document.getElementById(containerId);
-    
+
     // Move buttons
     container.querySelectorAll('.move-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', async e => {
         const bookId = parseInt(e.target.closest('.move-btn').dataset.id);
         await this.moveBook(bookId);
       });
@@ -381,7 +332,7 @@ class RakBukuPage {
 
     // Delete buttons
     container.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', async e => {
         const bookId = parseInt(e.target.closest('.delete-btn').dataset.id);
         await this.deleteBookHandler(bookId);
       });
@@ -418,14 +369,20 @@ class RakBukuPage {
       return;
     }
 
-    const filteredBooks = this.books.filter(book =>
-      book.title.toLowerCase().includes(query.toLowerCase()) ||
-      book.author.toLowerCase().includes(query.toLowerCase()) ||
-      (book.description && book.description.toLowerCase().includes(query.toLowerCase()))
+    const filteredBooks = this.books.filter(
+      book =>
+        book.title.toLowerCase().includes(query.toLowerCase()) ||
+        book.author.toLowerCase().includes(query.toLowerCase()) ||
+        (book.description &&
+          book.description.toLowerCase().includes(query.toLowerCase()))
     );
 
-    const unreadBooks = filteredBooks.filter(book => !book.is_complete && !book.isComplete);
-    const readBooks = filteredBooks.filter(book => book.is_complete || book.isComplete);
+    const unreadBooks = filteredBooks.filter(
+      book => !book.is_complete && !book.isComplete
+    );
+    const readBooks = filteredBooks.filter(
+      book => book.is_complete || book.isComplete
+    );
 
     this.renderBookList('unreadBooks', unreadBooks);
     this.renderBookList('readBooks', readBooks);
@@ -433,11 +390,11 @@ class RakBukuPage {
 
   escapeHtml(unsafe) {
     return unsafe
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   showToast(message, type = 'info') {
@@ -455,9 +412,9 @@ class RakBukuPage {
       z-index: 1000;
       animation: slideIn 0.3s ease;
     `;
-    
+
     document.body.appendChild(toast);
-    
+
     setTimeout(() => {
       toast.remove();
     }, 3000);
@@ -468,7 +425,7 @@ class RakBukuPage {
       success: '#00b894',
       error: '#e17055',
       info: '#74b9ff',
-      warning: '#fdcb6e'
+      warning: '#fdcb6e',
     };
     return colors[type] || colors.info;
   }

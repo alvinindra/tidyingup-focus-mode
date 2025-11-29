@@ -1,3 +1,4 @@
+import { Api } from '../../data/api.js';
 import { DB } from '../../js/db.js';
 
 export class CatatanPage {
@@ -24,7 +25,7 @@ export class CatatanPage {
                 <option value="study">Belajar</option>
                 <option value="personal">Personal</option>
                 <option value="work">Kerja</option>
-                <option value="ideas">Ide-ide</option>
+                <option value="other">Lainnya</option>
               </select>
             </div>
             <div class="search-box">
@@ -58,7 +59,7 @@ export class CatatanPage {
                 <option value="study">Belajar</option>
                 <option value="personal">Personal</option>
                 <option value="work">Kerja</option>
-                <option value="ideas">Ide-ide</option>
+                <option value="other">Lainnya</option>
               </select>
             </div>
             <div class="form-group">
@@ -82,25 +83,15 @@ export class CatatanPage {
 
   async loadNotes() {
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        this.showError('Silakan login terlebih dahulu');
+      if (!Api.auth.isLoggedIn()) {
+        // Fallback to local DB if not logged in
+        this.notes = await DB.getAll('notes');
+        this.renderNotes();
         return;
       }
 
-      const response = await fetch('http://localhost:3307/api/notes', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        this.notes = await response.json();
-        this.renderNotes();
-      } else {
-        throw new Error('Failed to fetch notes');
-      }
+      this.notes = await Api.notes.getAll();
+      this.renderNotes();
     } catch (error) {
       console.error('Error loading notes:', error);
       // Fallback to local DB
@@ -129,81 +120,108 @@ export class CatatanPage {
       return;
     }
 
-    notesGrid.innerHTML = notesToRender.map(note => `
+    notesGrid.innerHTML = notesToRender
+      .map(
+        note => `
       <div class="note-card" data-id="${note.id}">
         <div class="note-header">
           <h3>${this.escapeHtml(note.title)}</h3>
-          <span class="note-category ${note.category}">${this.getCategoryLabel(note.category)}</span>
+          <span class="note-category ${note.category}">${this.getCategoryLabel(
+          note.category
+        )}</span>
         </div>
         <div class="note-content">
           <p>${this.escapeHtml(note.content || note.body)}</p>
         </div>
         <div class="note-footer">
           <span class="note-date">
-            ${new Date(note.created_at || note.createdAt).toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric'
-            })}
+            ${new Date(note.created_at || note.createdAt).toLocaleDateString(
+              'id-ID',
+              {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              }
+            )}
           </span>
           <div class="note-actions">
-            <button class="icon-btn edit-note" data-id="${note.id}" title="Edit">
+            <button class="icon-btn edit-note" data-id="${
+              note.id
+            }" title="Edit">
               <i class="fas fa-edit"></i>
             </button>
-            <button class="icon-btn delete-note" data-id="${note.id}" title="Hapus">
+            <button class="icon-btn delete-note" data-id="${
+              note.id
+            }" title="Hapus">
               <i class="fas fa-trash"></i>
             </button>
           </div>
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
   }
 
   getCategoryLabel(category) {
     const labels = {
-      'study': 'Belajar',
-      'personal': 'Personal',
-      'work': 'Kerja',
-      'ideas': 'Ide-ide'
+      study: 'Belajar',
+      personal: 'Personal',
+      work: 'Kerja',
+      other: 'Lainnya',
     };
     return labels[category] || category;
   }
 
   setupEventListeners() {
     // Add note button
-    document.getElementById('addNoteBtn').addEventListener('click', () => this.openNoteModal());
-    
+    document
+      .getElementById('addNoteBtn')
+      .addEventListener('click', () => this.openNoteModal());
+
     // Search functionality
-    document.getElementById('noteSearch').addEventListener('input', (e) => {
+    document.getElementById('noteSearch').addEventListener('input', e => {
       this.searchNotes(e.target.value);
     });
 
     // Category filter
-    document.getElementById('categoryFilter').addEventListener('change', (e) => {
+    document.getElementById('categoryFilter').addEventListener('change', e => {
       this.filterByCategory(e.target.value);
     });
-    
+
     // Modal events
-    document.querySelector('#noteModal .close-modal').addEventListener('click', () => this.closeModal());
-    document.getElementById('cancelNote').addEventListener('click', () => this.closeModal());
-    document.getElementById('noteForm').addEventListener('submit', (e) => this.handleNoteSubmit(e));
-    
+    document
+      .querySelector('#noteModal .close-modal')
+      .addEventListener('click', () => this.closeModal());
+    document
+      .getElementById('cancelNote')
+      .addEventListener('click', () => this.closeModal());
+    document
+      .getElementById('noteForm')
+      .addEventListener('submit', e => this.handleNoteSubmit(e));
+
     // Event delegation for note actions
-    document.getElementById('notesGrid').addEventListener('click', (e) => {
+    document.getElementById('notesGrid').addEventListener('click', e => {
       const target = e.target.closest('button');
       if (!target) return;
 
       const noteId = parseInt(target.dataset.id);
-      
-      if (target.classList.contains('edit-note') || target.closest('.edit-note')) {
+
+      if (
+        target.classList.contains('edit-note') ||
+        target.closest('.edit-note')
+      ) {
         this.editNote(noteId);
-      } else if (target.classList.contains('delete-note') || target.closest('.delete-note')) {
+      } else if (
+        target.classList.contains('delete-note') ||
+        target.closest('.delete-note')
+      ) {
         this.deleteNote(noteId);
       }
     });
 
     // Empty state buttons
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', e => {
       if (e.target.id === 'addFirstNote') {
         this.openNoteModal();
       }
@@ -216,9 +234,10 @@ export class CatatanPage {
       return;
     }
 
-    const filteredNotes = this.notes.filter(note =>
-      note.title.toLowerCase().includes(query.toLowerCase()) ||
-      (note.content || note.body).toLowerCase().includes(query.toLowerCase())
+    const filteredNotes = this.notes.filter(
+      note =>
+        note.title.toLowerCase().includes(query.toLowerCase()) ||
+        (note.content || note.body).toLowerCase().includes(query.toLowerCase())
     );
 
     this.renderNotes(filteredNotes);
@@ -260,49 +279,37 @@ export class CatatanPage {
 
   async handleNoteSubmit(e) {
     e.preventDefault();
-    
+
     const form = e.target;
     const noteData = {
       title: document.getElementById('noteTitle').value,
       content: document.getElementById('noteBody').value,
-      category: document.getElementById('noteCategory').value
+      category: document.getElementById('noteCategory').value,
     };
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        throw new Error('No authentication token');
-      }
+      if (Api.auth.isLoggedIn()) {
+        if (form.dataset.editId) {
+          // Update existing note
+          await Api.notes.update(form.dataset.editId, noteData);
+        } else {
+          // Add new note
+          await Api.notes.create(noteData);
+        }
 
-      let response;
-      if (form.dataset.editId) {
-        // Update existing note
-        response = await fetch(`http://localhost:3307/api/notes/${form.dataset.editId}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(noteData)
-        });
-      } else {
-        // Add new note
-        response = await fetch('http://localhost:3307/api/notes', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(noteData)
-        });
-      }
-
-      if (response.ok) {
         await this.loadNotes();
         this.closeModal();
         this.showSuccess('Catatan berhasil disimpan');
       } else {
-        throw new Error('Failed to save note');
+        // Fallback to local DB
+        noteData.createdAt = new Date().toISOString();
+        if (form.dataset.editId) {
+          noteData.id = parseInt(form.dataset.editId);
+        }
+        await DB.set('notes', noteData);
+        await this.loadNotes();
+        this.closeModal();
+        this.showSuccess('Catatan berhasil disimpan (offline)');
       }
     } catch (error) {
       console.error('Error saving note:', error);
@@ -311,10 +318,8 @@ export class CatatanPage {
         noteData.createdAt = new Date().toISOString();
         if (form.dataset.editId) {
           noteData.id = parseInt(form.dataset.editId);
-          await DB.set('notes', noteData);
-        } else {
-          await DB.set('notes', noteData);
         }
+        await DB.set('notes', noteData);
         await this.loadNotes();
         this.closeModal();
         this.showSuccess('Catatan berhasil disimpan (offline)');
@@ -335,25 +340,15 @@ export class CatatanPage {
     if (!confirm('Apakah Anda yakin ingin menghapus catatan ini?')) return;
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch(`http://localhost:3307/api/notes/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to delete note');
-        }
+      if (Api.auth.isLoggedIn()) {
+        await Api.notes.delete(id);
+        await this.loadNotes();
+        this.showSuccess('Catatan berhasil dihapus');
       } else {
-        throw new Error('No authentication token');
+        await DB.delete('notes', id);
+        await this.loadNotes();
+        this.showSuccess('Catatan berhasil dihapus (offline)');
       }
-
-      await this.loadNotes();
-      this.showSuccess('Catatan berhasil dihapus');
     } catch (error) {
       console.error('Error deleting note:', error);
       // Fallback to local DB
@@ -369,23 +364,23 @@ export class CatatanPage {
 
   escapeHtml(unsafe) {
     return unsafe
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   showSuccess(message) {
     const event = new CustomEvent('show-toast', {
-      detail: { message, type: 'success' }
+      detail: { message, type: 'success' },
     });
     document.dispatchEvent(event);
   }
 
   showError(message) {
     const event = new CustomEvent('show-toast', {
-      detail: { message, type: 'error' }
+      detail: { message, type: 'error' },
     });
     document.dispatchEvent(event);
   }

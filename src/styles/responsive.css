@@ -154,7 +154,7 @@
 }
 
 /* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
+/* @media (prefers-color-scheme: dark) {
   :root {
     --light: #2d3436;
     --dark: #ffffff;
@@ -183,4 +183,4 @@
     color: white;
     border-color: #74b9ff;
   }
-}
+} */

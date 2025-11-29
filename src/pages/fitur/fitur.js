@@ -1,3 +1,5 @@
+import { Api } from '../../data/api.js';
+
 export class FiturPage {
   constructor() {
     this.name = 'fitur';
@@ -125,32 +127,46 @@ export class FiturPage {
   async checkSystemStatus() {
     // Check API status
     try {
-      const response = await fetch('http://localhost:3307/api/health');
-      if (response.ok) {
-        const data = await response.json();
+      const isHealthy = await Api.healthCheck();
+      if (isHealthy) {
         document.getElementById('apiStatus').textContent = 'Online';
-        document.getElementById('apiStatus').className = 'status-indicator online';
-        document.getElementById('dbStatus').textContent = data.database === 'Connected' ? 'Online' : 'Offline';
-        document.getElementById('dbStatus').className = `status-indicator ${data.database === 'Connected' ? 'online' : 'offline'}`;
+        document.getElementById('apiStatus').className =
+          'status-indicator online';
+
+        // Try to get more health details
+        try {
+          const healthData = await Api.get('/health', false);
+          document.getElementById('dbStatus').textContent =
+            healthData.database === 'Connected' ? 'Online' : 'Offline';
+          document.getElementById('dbStatus').className = `status-indicator ${
+            healthData.database === 'Connected' ? 'online' : 'offline'
+          }`;
+        } catch {
+          document.getElementById('dbStatus').textContent = 'Unknown';
+          document.getElementById('dbStatus').className =
+            'status-indicator offline';
+        }
       } else {
         throw new Error('API not responding');
       }
     } catch (error) {
       document.getElementById('apiStatus').textContent = 'Offline';
-      document.getElementById('apiStatus').className = 'status-indicator offline';
+      document.getElementById('apiStatus').className =
+        'status-indicator offline';
       document.getElementById('dbStatus').textContent = 'Offline';
-      document.getElementById('dbStatus').className = 'status-indicator offline';
+      document.getElementById('dbStatus').className =
+        'status-indicator offline';
     }
 
     // Check auth status
-    const token = localStorage.getItem('authToken');
-    const user = localStorage.getItem('currentUser');
-    if (token && user) {
+    if (Api.auth.isLoggedIn()) {
       document.getElementById('authStatus').textContent = 'Logged In';
-      document.getElementById('authStatus').className = 'status-indicator online';
+      document.getElementById('authStatus').className =
+        'status-indicator online';
     } else {
       document.getElementById('authStatus').textContent = 'Logged Out';
-      document.getElementById('authStatus').className = 'status-indicator offline';
+      document.getElementById('authStatus').className =
+        'status-indicator offline';
     }
   }
 }

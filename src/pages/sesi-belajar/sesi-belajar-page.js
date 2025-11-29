@@ -1,3 +1,4 @@
+import { Api } from '../../data/api.js';
 import { DB } from '../../js/db.js';
 
 export class SesiBelajarPage {
@@ -78,20 +79,10 @@ export class SesiBelajarPage {
 
   async loadSessions() {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch('http://localhost:3307/api/sessions', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          this.sessions = await response.json();
-          this.renderSessions();
-          return;
-        }
+      if (Api.auth.isLoggedIn()) {
+        this.sessions = await Api.sessions.getAll();
+        this.renderSessions();
+        return;
       }
 
       // Fallback to local DB
@@ -130,7 +121,9 @@ export class SesiBelajarPage {
       return;
     }
 
-    sessionList.innerHTML = filteredSessions.map(session => `
+    sessionList.innerHTML = filteredSessions
+      .map(
+        session => `
       <div class="session-card" data-id="${session.id}">
         <div class="session-header">
           <h3>${session.title}</h3>
@@ -141,49 +134,79 @@ export class SesiBelajarPage {
         <div class="session-details">
           <p><strong>Mata Pelajaran:</strong> ${session.subject}</p>
           <p><strong>Durasi:</strong> ${session.duration} menit</p>
-          <p><strong>Dibuat:</strong> ${new Date(session.created_at || session.createdAt).toLocaleDateString('id-ID')}</p>
-          ${session.description ? `<p><strong>Deskripsi:</strong> ${session.description}</p>` : ''}
-          ${session.notes ? `<p><strong>Catatan:</strong> ${session.notes}</p>` : ''}
+          <p><strong>Dibuat:</strong> ${new Date(
+            session.created_at || session.createdAt
+          ).toLocaleDateString('id-ID')}</p>
+          ${
+            session.description
+              ? `<p><strong>Deskripsi:</strong> ${session.description}</p>`
+              : ''
+          }
+          ${
+            session.notes
+              ? `<p><strong>Catatan:</strong> ${session.notes}</p>`
+              : ''
+          }
         </div>
         <div class="session-actions">
-          <button class="action-btn edit-btn" data-id="${session.id}">Edit</button>
-          <button class="action-btn delete-btn" data-id="${session.id}">Hapus</button>
-          ${session.status === 'planned' ? 
-            `<button class="action-btn start-btn" data-id="${session.id}">Mulai</button>` : ''}
-          ${session.status === 'inprogress' ? 
-            `<button class="action-btn complete-btn" data-id="${session.id}">Selesai</button>` : ''}
+          <button class="action-btn edit-btn" data-id="${
+            session.id
+          }">Edit</button>
+          <button class="action-btn delete-btn" data-id="${
+            session.id
+          }">Hapus</button>
+          ${
+            session.status === 'planned'
+              ? `<button class="action-btn start-btn" data-id="${session.id}">Mulai</button>`
+              : ''
+          }
+          ${
+            session.status === 'inprogress'
+              ? `<button class="action-btn complete-btn" data-id="${session.id}">Selesai</button>`
+              : ''
+          }
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
   }
 
   getStatusText(status) {
     const statusMap = {
       planned: 'Direncanakan',
       inprogress: 'Sedang Berlangsung',
-      completed: 'Selesai'
+      completed: 'Selesai',
     };
     return statusMap[status] || status;
   }
 
   setupEventListeners() {
     // Add session button
-    document.getElementById('addSessionBtn').addEventListener('click', () => this.openSessionModal());
-    
+    document
+      .getElementById('addSessionBtn')
+      .addEventListener('click', () => this.openSessionModal());
+
     // Filter change
-    document.getElementById('sessionFilter').addEventListener('change', () => this.renderSessions());
-    
+    document
+      .getElementById('sessionFilter')
+      .addEventListener('change', () => this.renderSessions());
+
     // Modal events
-    document.querySelector('.close-modal').addEventListener('click', () => this.closeModal());
-    document.getElementById('sessionForm').addEventListener('submit', (e) => this.handleSessionSubmit(e));
-    
+    document
+      .querySelector('.close-modal')
+      .addEventListener('click', () => this.closeModal());
+    document
+      .getElementById('sessionForm')
+      .addEventListener('submit', e => this.handleSessionSubmit(e));
+
     // Event delegation for session actions
-    document.getElementById('sessionList').addEventListener('click', (e) => {
+    document.getElementById('sessionList').addEventListener('click', e => {
       const target = e.target.closest('button');
       if (!target) return;
 
       const sessionId = parseInt(target.dataset.id);
-      
+
       if (target.classList.contains('edit-btn')) {
         this.editSession(sessionId);
       } else if (target.classList.contains('delete-btn')) {
@@ -196,7 +219,7 @@ export class SesiBelajarPage {
     });
 
     // Empty state button
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', e => {
       if (e.target.id === 'addFirstSession') {
         this.openSessionModal();
       }
@@ -215,7 +238,8 @@ export class SesiBelajarPage {
       document.getElementById('sessionSubject').value = session.subject;
       document.getElementById('sessionDuration').value = session.duration;
       document.getElementById('sessionStatus').value = session.status;
-      document.getElementById('sessionNotes').value = session.description || session.notes || '';
+      document.getElementById('sessionNotes').value =
+        session.description || session.notes || '';
     } else {
       title.textContent = 'Tambah Sesi Belajar';
       form.reset();
@@ -231,55 +255,39 @@ export class SesiBelajarPage {
 
   async handleSessionSubmit(e) {
     e.preventDefault();
-    
+
     const form = e.target;
     const sessionData = {
       title: document.getElementById('sessionTitle').value,
       subject: document.getElementById('sessionSubject').value,
       duration: parseInt(document.getElementById('sessionDuration').value),
       status: document.getElementById('sessionStatus').value,
-      description: document.getElementById('sessionNotes').value
+      description: document.getElementById('sessionNotes').value,
     };
 
-    try {
-      const token = localStorage.getItem('authToken');
-      let response;
+    console.log('Session data to save:', sessionData);
+    console.log('Is logged in:', Api.auth.isLoggedIn());
 
-      if (form.dataset.editId) {
-        // Update existing session
-        if (token) {
-          response = await fetch(`http://localhost:3307/api/sessions/${form.dataset.editId}`, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(sessionData)
-          });
+    try {
+      if (Api.auth.isLoggedIn()) {
+        if (form.dataset.editId) {
+          // Update existing session
+          console.log('Updating session:', form.dataset.editId);
+          await Api.sessions.update(form.dataset.editId, sessionData);
         } else {
-          sessionData.id = parseInt(form.dataset.editId);
-          sessionData.createdAt = new Date().toISOString();
-          await DB.set('sessions', sessionData);
+          // Add new session
+          console.log('Creating new session...');
+          const result = await Api.sessions.create(sessionData);
+          console.log('Session created:', result);
         }
       } else {
-        // Add new session
-        if (token) {
-          response = await fetch('http://localhost:3307/api/sessions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(sessionData)
-          });
-        } else {
-          sessionData.createdAt = new Date().toISOString();
-          await DB.set('sessions', sessionData);
+        // Fallback to local DB
+        console.log('Not logged in, saving to local DB');
+        if (form.dataset.editId) {
+          sessionData.id = parseInt(form.dataset.editId);
         }
-      }
-
-      if (token && response && !response.ok) {
-        throw new Error('Failed to save session');
+        sessionData.createdAt = new Date().toISOString();
+        await DB.set('sessions', sessionData);
       }
 
       await this.loadSessions();
@@ -302,19 +310,8 @@ export class SesiBelajarPage {
     if (!confirm('Apakah Anda yakin ingin menghapus sesi ini?')) return;
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch(`http://localhost:3307/api/sessions/${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to delete session');
-        }
+      if (Api.auth.isLoggedIn()) {
+        await Api.sessions.delete(id);
       } else {
         await DB.delete('sessions', id);
       }
@@ -329,15 +326,8 @@ export class SesiBelajarPage {
 
   async startSession(id) {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        await fetch(`http://localhost:3307/api/sessions/${id}/start`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
+      if (Api.auth.isLoggedIn()) {
+        await Api.sessions.start(id);
       } else {
         // Update local session
         const session = this.sessions.find(s => s.id === id);
@@ -349,7 +339,7 @@ export class SesiBelajarPage {
 
       await this.loadSessions();
       this.showSuccess('Sesi berhasil dimulai');
-      
+
       // Navigate to focus mode
       window.location.hash = '#/focus-mode';
     } catch (error) {
@@ -360,15 +350,8 @@ export class SesiBelajarPage {
 
   async completeSession(id) {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        await fetch(`http://localhost:3307/api/sessions/${id}/complete`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
+      if (Api.auth.isLoggedIn()) {
+        await Api.sessions.complete(id);
       } else {
         // Update local session
         const session = this.sessions.find(s => s.id === id);
@@ -388,14 +371,14 @@ export class SesiBelajarPage {
 
   showSuccess(message) {
     const event = new CustomEvent('show-toast', {
-      detail: { message, type: 'success' }
+      detail: { message, type: 'success' },
     });
     document.dispatchEvent(event);
   }
 
   showError(message) {
     const event = new CustomEvent('show-toast', {
-      detail: { message, type: 'error' }
+      detail: { message, type: 'error' },
     });
     document.dispatchEvent(event);
   }

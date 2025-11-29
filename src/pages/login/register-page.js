@@ -1,3 +1,5 @@
+import { Api } from '../../data/api.js';
+
 class RegisterPage {
   constructor() {
     this.name = 'register';
@@ -59,7 +61,7 @@ class RegisterPage {
     });
 
     // Register form
-    document.getElementById('registerForm').addEventListener('submit', (e) => {
+    document.getElementById('registerForm').addEventListener('submit', e => {
       e.preventDefault();
       this.handleRegister();
     });
@@ -87,7 +89,9 @@ class RegisterPage {
     const name = document.getElementById('registerName').value;
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
-    const confirmPassword = document.getElementById('registerConfirmPassword').value;
+    const confirmPassword = document.getElementById(
+      'registerConfirmPassword'
+    ).value;
 
     // Validation
     if (!name || !email || !password || !confirmPassword) {
@@ -106,51 +110,14 @@ class RegisterPage {
     }
 
     try {
-      const response = await fetch('http://localhost:3307/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name, email, password })
-      });
+      // Use centralized API
+      const data = await Api.auth.register(name, email, password);
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Save token and user data
-        localStorage.setItem('authToken', data.token);
-        localStorage.setItem('currentUser', JSON.stringify(data.user));
-        
-        // Redirect to home
-        window.location.hash = '#/';
-        
-      } else {
-        const errorData = await response.json();
-        this.showError(errorData.error || 'Registrasi gagal');
-      }
-    } catch (error) {
-      console.error('Registration error:', error);
-      // Fallback to local registration
-      this.handleLocalRegister(name, email);
-    }
-  }
-
-  handleLocalRegister(name, email) {
-    try {
-      const user = {
-        id: Date.now(),
-        name: name,
-        email: email,
-        avatar: name.charAt(0).toUpperCase()
-      };
-
-      localStorage.setItem('currentUser', JSON.stringify(user));
-      
       // Redirect to home
       window.location.hash = '#/';
-      
     } catch (error) {
-      this.showError('Registrasi gagal. Silakan coba lagi.');
+      console.error('Registration error:', error);
+      this.showError(error.message || 'Registrasi gagal. Silakan coba lagi.');
     }
   }
 

@@ -1,3 +1,5 @@
+import { Api } from '../../data/api.js';
+
 export class BerandaPage {
   constructor() {
     this.name = 'beranda';
@@ -94,21 +96,11 @@ export class BerandaPage {
 
   async loadDashboardData() {
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
+      if (!Api.auth.isLoggedIn()) return;
 
-      const response = await fetch('http://localhost:3307/api/user/dashboard', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.userStats = data;
-        this.updateStatsDisplay(data);
-      }
+      const data = await Api.user.getDashboard();
+      this.userStats = data;
+      this.updateStatsDisplay(data);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
@@ -116,13 +108,14 @@ export class BerandaPage {
 
   updateStatsDisplay(data) {
     if (data.dashboard) {
-      document.getElementById('totalStudyTime').textContent = 
-        `${data.todayStats?.total_minutes || 0} menit`;
-      document.getElementById('completedSessions').textContent = 
+      document.getElementById('totalStudyTime').textContent = `${
+        data.todayStats?.total_minutes || 0
+      } menit`;
+      document.getElementById('completedSessions').textContent =
         data.dashboard.completed_sessions || 0;
-      document.getElementById('totalNotes').textContent = 
+      document.getElementById('totalNotes').textContent =
         data.dashboard.total_notes || 0;
-      document.getElementById('totalBooks').textContent = 
+      document.getElementById('totalBooks').textContent =
         data.dashboard.total_books || 0;
     }
   }

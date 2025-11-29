@@ -1,3 +1,5 @@
+import { Api } from '../../data/api.js';
+
 class LoginPage {
   constructor() {
     this.name = 'login';
@@ -49,7 +51,7 @@ class LoginPage {
     });
 
     // Login form
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
+    document.getElementById('loginForm').addEventListener('submit', e => {
       e.preventDefault();
       this.handleLogin();
     });
@@ -84,52 +86,16 @@ class LoginPage {
     }
 
     try {
-      const response = await fetch('http://localhost:3307/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password })
-      });
+      // Use centralized API
+      const data = await Api.auth.login(email, password);
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Save token and user data
-        localStorage.setItem('authToken', data.token);
-        localStorage.setItem('currentUser', JSON.stringify(data.user));
-        
-        // Redirect to home
-        window.location.hash = '#/';
-        
-      } else {
-        const errorData = await response.json();
-        this.showError(errorData.error || 'Login gagal');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      // Fallback to local login
-      this.handleLocalLogin(email, password);
-    }
-  }
-
-  handleLocalLogin(email, password) {
-    // Simulate API call for local fallback
-    try {
-      const user = {
-        id: Date.now(),
-        name: email.split('@')[0],
-        email: email,
-        avatar: email.charAt(0).toUpperCase()
-      };
-
-      localStorage.setItem('currentUser', JSON.stringify(user));
-      
       // Redirect to home
       window.location.hash = '#/';
-      
     } catch (error) {
-      this.showError('Login gagal. Periksa email dan password Anda.');
+      console.error('Login error:', error);
+      this.showError(
+        error.message || 'Login gagal. Periksa email dan password Anda.'
+      );
     }
   }
 

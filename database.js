@@ -6,7 +6,7 @@ class Database {
     // Konfigurasi untuk XAMPP dengan port 3307
     this.config = {
       host: 'localhost',
-      port: 3307, // PORT YANG BENAR
+      port: 3306, // PORT YANG BENAR
       user: 'root',
       password: '', // XAMPP default biasanya tanpa password
       database: 'focusmode_db',
@@ -15,7 +15,7 @@ class Database {
       connectTimeout: 60000,
       acquireTimeout: 60000,
       timeout: 60000,
-      reconnect: true
+      reconnect: true,
     };
   }
 
@@ -26,19 +26,19 @@ class Database {
         host: this.config.host,
         port: this.config.port,
         user: this.config.user,
-        database: this.config.database
+        database: this.config.database,
       });
-      
+
       this.connection = await mysql.createConnection(this.config);
-      
+
       // Test connection
       await this.connection.execute('SELECT 1 + 1 as result');
       const [rows] = await this.connection.execute('SELECT DATABASE() as db');
-      
+
       console.log('✅ BERHASIL terhubung ke MySQL!');
       console.log('📊 Database:', rows[0].db);
       console.log('🚀 Server siap menerima koneksi API');
-      
+
       return this.connection;
     } catch (error) {
       console.error('❌ Database connection failed:', error.message);
@@ -62,7 +62,7 @@ class Database {
       if (!this.connection) {
         await this.connect();
       }
-      
+
       console.log('📝 Executing query:', sql.substring(0, 100) + '...');
       const [results] = await this.connection.execute(sql, params);
       return results;
@@ -80,15 +80,14 @@ class Database {
       INSERT INTO users (name, email, password, avatar) 
       VALUES (?, ?, ?, ?)
     `;
-    
+
     const result = await this.query(sql, [name, email, password, avatar]);
-    
+
     // Create default settings for user
-    await this.query(
-      'INSERT INTO user_settings (user_id) VALUES (?)',
-      [result.insertId]
-    );
-    
+    await this.query('INSERT INTO user_settings (user_id) VALUES (?)', [
+      result.insertId,
+    ]);
+
     return result.insertId;
   }
 
@@ -116,17 +115,32 @@ class Database {
 
   // Study Sessions operations
   async getSessionsByUserId(userId) {
-    const sql = 'SELECT * FROM study_sessions WHERE user_id = ? ORDER BY created_at DESC';
+    const sql =
+      'SELECT * FROM study_sessions WHERE user_id = ? ORDER BY created_at DESC';
     return await this.query(sql, [userId]);
   }
 
   async createSession(sessionData) {
-    const { user_id, title, description, subject, duration, status = 'planned' } = sessionData;
+    const {
+      user_id,
+      title,
+      description,
+      subject,
+      duration,
+      status = 'planned',
+    } = sessionData;
     const sql = `
       INSERT INTO study_sessions (user_id, title, description, subject, duration, status) 
       VALUES (?, ?, ?, ?, ?, ?)
     `;
-    const result = await this.query(sql, [user_id, title, description, subject, duration, status]);
+    const result = await this.query(sql, [
+      user_id,
+      title,
+      description,
+      subject,
+      duration,
+      status,
+    ]);
     return result.insertId;
   }
 
@@ -166,12 +180,12 @@ class Database {
   async getNotesByUserId(userId, category = 'all') {
     let sql = 'SELECT * FROM notes WHERE user_id = ?';
     let params = [userId];
-    
+
     if (category !== 'all') {
       sql += ' AND category = ?';
       params.push(category);
     }
-    
+
     sql += ' ORDER BY created_at DESC';
     return await this.query(sql, params);
   }
@@ -202,28 +216,50 @@ class Database {
 
   // Books operations
   async getBooksByUserId(userId) {
-    const sql = 'SELECT * FROM books WHERE user_id = ? ORDER BY created_at DESC';
+    const sql =
+      'SELECT * FROM books WHERE user_id = ? ORDER BY created_at DESC';
     return await this.query(sql, [userId]);
   }
 
   async createBook(bookData) {
-    const { user_id, title, author, description, category = 'academic' } = bookData;
+    const {
+      user_id,
+      title,
+      author,
+      description,
+      category = 'academic',
+      is_complete = false,
+    } = bookData;
     const sql = `
-      INSERT INTO books (user_id, title, author, description, category) 
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO books (user_id, title, author, description, category, is_complete) 
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
-    const result = await this.query(sql, [user_id, title, author, description, category]);
+    const result = await this.query(sql, [
+      user_id,
+      title,
+      author,
+      description,
+      category,
+      is_complete,
+    ]);
     return result.insertId;
   }
 
   async updateBook(id, bookData) {
-    const { title, author, description, category } = bookData;
+    const { title, author, description, category, is_complete } = bookData;
     const sql = `
       UPDATE books 
-      SET title = ?, author = ?, description = ?, category = ? 
+      SET title = ?, author = ?, description = ?, category = ?, is_complete = ? 
       WHERE id = ?
     `;
-    await this.query(sql, [title, author, description, category, id]);
+    await this.query(sql, [
+      title,
+      author,
+      description,
+      category,
+      is_complete,
+      id,
+    ]);
   }
 
   async deleteBook(id) {
@@ -289,12 +325,24 @@ class Database {
 
   // Focus timers operations
   async saveFocusTimer(timerData) {
-    const { user_id, timer_type, duration, completed = false, task_description } = timerData;
+    const {
+      user_id,
+      timer_type,
+      duration,
+      completed = false,
+      task_description,
+    } = timerData;
     const sql = `
       INSERT INTO focus_timers (user_id, timer_type, duration, completed, task_description) 
       VALUES (?, ?, ?, ?, ?)
     `;
-    const result = await this.query(sql, [user_id, timer_type, duration, completed, task_description]);
+    const result = await this.query(sql, [
+      user_id,
+      timer_type,
+      duration,
+      completed,
+      task_description,
+    ]);
     return result.insertId;
   }
 
@@ -308,7 +356,8 @@ class Database {
   }
 
   async getFocusTimersByUserId(userId) {
-    const sql = 'SELECT * FROM focus_timers WHERE user_id = ? ORDER BY started_at DESC LIMIT 50';
+    const sql =
+      'SELECT * FROM focus_timers WHERE user_id = ? ORDER BY started_at DESC LIMIT 50';
     return await this.query(sql, [userId]);
   }
 }

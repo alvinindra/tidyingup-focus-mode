@@ -8,8 +8,7 @@
     "start": "node server.js",
     "serve": "node server.js",
     "api": "node start-app.js",
-    "test-db": "node test-fixed.js",
-    "dev": "npm run test-db && npm run api",
+    "dev": "npm run api",
     "start-dev": "webpack serve --config webpack.dev.js",
     "build": "webpack --config webpack.prod.js",
     "build-dev": "webpack --config webpack.dev.js",
@@ -19,9 +18,7 @@
     "format:check": "prettier --check .",
     "clean": "rm -rf dist",
     "build:clean": "npm run clean && npm run build",
-
     "dev-full": "concurrently \"npm run api\" \"npm run start-dev\"",
-    "dev-with-db": "concurrently \"npm run api\" \"npm run start-dev\"",
     "fullstack": "concurrently \"npm run api\" \"npm run start-dev\""
   },
   "keywords": [

@@ -10,7 +10,7 @@ const PORT = process.env.API_PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'focusmode-secret-key-2024';
 
 // Di bagian awal api-server.js, tambahkan:
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   console.error('🔥 Uncaught Exception:', error);
 });
 
@@ -23,21 +23,21 @@ app.get('/api/health', async (req, res) => {
   try {
     // Test database connection
     await Database.query('SELECT 1');
-    
-    res.json({ 
-      status: 'OK', 
+
+    res.json({
+      status: 'OK',
       service: 'FocusMode API',
       database: 'Connected',
       timestamp: new Date().toISOString(),
-      port: 3307
+      port: 3307,
     });
   } catch (error) {
-    res.status(500).json({ 
-      status: 'ERROR', 
+    res.status(500).json({
+      status: 'ERROR',
       service: 'FocusMode API',
       database: 'Disconnected',
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 });
@@ -68,10 +68,10 @@ const authenticateToken = (req, res, next) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     service: 'FocusMode API',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -85,7 +85,9 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      return res
+        .status(400)
+        .json({ error: 'Password must be at least 6 characters' });
     }
 
     // Check if user already exists
@@ -103,15 +105,13 @@ app.post('/api/auth/register', async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      avatar
+      avatar,
     });
 
     // Generate JWT token
-    const token = jwt.sign(
-      { id: userId, email, name, avatar },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = jwt.sign({ id: userId, email, name, avatar }, JWT_SECRET, {
+      expiresIn: '7d',
+    });
 
     res.status(201).json({
       message: 'User created successfully',
@@ -119,9 +119,9 @@ app.post('/api/auth/register', async (req, res) => {
         id: userId,
         name,
         email,
-        avatar
+        avatar,
       },
-      token
+      token,
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -150,18 +150,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Update last login
-    await Database.query(
-      'UPDATE users SET last_login = NOW() WHERE id = ?',
-      [user.id]
-    );
+    await Database.query('UPDATE users SET last_login = NOW() WHERE id = ?', [
+      user.id,
+    ]);
 
     // Generate JWT token
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        name: user.name, 
-        avatar: user.avatar 
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -178,10 +177,10 @@ app.post('/api/auth/login', async (req, res) => {
           push_enabled: user.push_enabled,
           daily_reminders: user.daily_reminders,
           session_reminders: user.session_reminders,
-          achievement_alerts: user.achievement_alerts
-        }
+          achievement_alerts: user.achievement_alerts,
+        },
       },
-      token
+      token,
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -194,11 +193,11 @@ app.get('/api/user/dashboard', authenticateToken, async (req, res) => {
   try {
     const dashboardData = await Database.getDashboardData(req.user.id);
     const todayStats = await Database.getTodayStats(req.user.id);
-    
+
     res.json({
       user: req.user,
       dashboard: dashboardData,
-      todayStats
+      todayStats,
     });
   } catch (error) {
     console.error('Dashboard error:', error);
@@ -220,19 +219,30 @@ app.get('/api/sessions', authenticateToken, async (req, res) => {
 app.post('/api/sessions', authenticateToken, async (req, res) => {
   try {
     const { title, description, subject, duration, status } = req.body;
-    
+
+    console.log('📝 Creating session for user:', req.user.id);
+    console.log('📝 Session data:', {
+      title,
+      description,
+      subject,
+      duration,
+      status,
+    });
+
     const sessionId = await Database.createSession({
       user_id: req.user.id,
       title,
       description,
       subject,
       duration,
-      status
+      status,
     });
 
-    res.status(201).json({ 
+    console.log('✅ Session created with ID:', sessionId);
+
+    res.status(201).json({
       message: 'Session created successfully',
-      id: sessionId 
+      id: sessionId,
     });
   } catch (error) {
     console.error('Create session error:', error);
@@ -244,13 +254,13 @@ app.put('/api/sessions/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, subject, duration, status } = req.body;
-    
+
     await Database.updateSession(id, {
       title,
       description,
       subject,
       duration,
-      status
+      status,
     });
 
     res.json({ message: 'Session updated successfully' });
@@ -308,17 +318,17 @@ app.get('/api/notes', authenticateToken, async (req, res) => {
 app.post('/api/notes', authenticateToken, async (req, res) => {
   try {
     const { title, content, category } = req.body;
-    
+
     const noteId = await Database.createNote({
       user_id: req.user.id,
       title,
       content,
-      category
+      category,
     });
 
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'Note created successfully',
-      id: noteId 
+      id: noteId,
     });
   } catch (error) {
     console.error('Create note error:', error);
@@ -330,11 +340,11 @@ app.put('/api/notes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, category } = req.body;
-    
+
     await Database.updateNote(id, {
       title,
       content,
-      category
+      category,
     });
 
     res.json({ message: 'Note updated successfully' });
@@ -368,19 +378,20 @@ app.get('/api/books', authenticateToken, async (req, res) => {
 
 app.post('/api/books', authenticateToken, async (req, res) => {
   try {
-    const { title, author, description, category } = req.body;
-    
+    const { title, author, description, category, is_complete } = req.body;
+
     const bookId = await Database.createBook({
       user_id: req.user.id,
       title,
       author,
       description,
-      category
+      category,
+      is_complete,
     });
 
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'Book created successfully',
-      id: bookId 
+      id: bookId,
     });
   } catch (error) {
     console.error('Create book error:', error);
@@ -391,13 +402,14 @@ app.post('/api/books', authenticateToken, async (req, res) => {
 app.put('/api/books/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, author, description, category } = req.body;
-    
+    const { title, author, description, category, is_complete } = req.body;
+
     await Database.updateBook(id, {
       title,
       author,
       description,
-      category
+      category,
+      is_complete,
     });
 
     res.json({ message: 'Book updated successfully' });
@@ -433,17 +445,17 @@ app.post('/api/books/:id/toggle', authenticateToken, async (req, res) => {
 app.post('/api/timers', authenticateToken, async (req, res) => {
   try {
     const { timer_type, duration, task_description } = req.body;
-    
+
     const timerId = await Database.saveFocusTimer({
       user_id: req.user.id,
       timer_type,
       duration,
-      task_description
+      task_description,
     });
 
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'Timer saved successfully',
-      id: timerId 
+      id: timerId,
     });
   } catch (error) {
     console.error('Save timer error:', error);
@@ -486,13 +498,27 @@ app.get('/api/stats/weekly', authenticateToken, async (req, res) => {
 // Settings routes
 app.put('/api/settings', authenticateToken, async (req, res) => {
   try {
-    const { push_enabled, daily_reminders, session_reminders, achievement_alerts } = req.body;
-    
-    await Database.query(`
+    const {
+      push_enabled,
+      daily_reminders,
+      session_reminders,
+      achievement_alerts,
+    } = req.body;
+
+    await Database.query(
+      `
       UPDATE user_settings 
       SET push_enabled = ?, daily_reminders = ?, session_reminders = ?, achievement_alerts = ?
       WHERE user_id = ?
-    `, [push_enabled, daily_reminders, session_reminders, achievement_alerts, req.user.id]);
+    `,
+      [
+        push_enabled,
+        daily_reminders,
+        session_reminders,
+        achievement_alerts,
+        req.user.id,
+      ]
+    );
 
     res.json({ message: 'Settings updated successfully' });
   } catch (error) {
@@ -505,7 +531,7 @@ app.put('/api/settings', authenticateToken, async (req, res) => {
 async function startServer() {
   try {
     await Database.connect();
-    
+
     app.listen(PORT, () => {
       console.log('🎯 FocusMode API Server');
       console.log(`📍 Running on http://localhost:${PORT}`);

@@ -1,3 +1,4 @@
+import { Api } from '../../data/api.js';
 import { NotificationManager } from '../../js/notification.js';
 
 export class FocusModePage {
@@ -130,7 +131,9 @@ export class FocusModePage {
     const minutes = Math.floor(this.timerSeconds / 60);
     const seconds = this.timerSeconds % 60;
     const timerDisplay = document.getElementById('timerDisplay');
-    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds
+      .toString()
+      .padStart(2, '0')}`;
   }
 
   enterFocusMode() {
@@ -148,11 +151,11 @@ export class FocusModePage {
   async onTimerComplete() {
     await NotificationManager.requestPermission();
     NotificationManager.showTimerComplete();
-    
+
     // Complete session in database
     await this.completeSession();
     this.loadStats();
-    
+
     alert('Waktu fokus telah habis! Istirahat sejenak.');
     this.resetTimer();
   }
@@ -163,38 +166,20 @@ export class FocusModePage {
     const taskDescription = document.getElementById('taskDescription').value;
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
+      if (Api.auth.isLoggedIn()) {
         const sessionData = {
           title: `Sesi Fokus ${duration} menit`,
           description: taskDescription || 'Sesi fokus belajar',
           subject: 'Belajar',
           duration: duration,
-          status: 'inprogress'
+          status: 'inprogress',
         };
 
-        const response = await fetch('http://localhost:3307/api/sessions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(sessionData)
-        });
+        const result = await Api.sessions.create(sessionData);
+        this.currentSession = result.id;
 
-        if (response.ok) {
-          const result = await response.json();
-          this.currentSession = result.id;
-          
-          // Start the session
-          await fetch(`http://localhost:3307/api/sessions/${result.id}/start`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-        }
+        // Start the session
+        await Api.sessions.start(result.id);
       }
     } catch (error) {
       console.error('Error creating session:', error);
@@ -205,32 +190,19 @@ export class FocusModePage {
     if (!this.currentSession) return;
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        await fetch(`http://localhost:3307/api/sessions/${this.currentSession}/complete`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
+      if (Api.auth.isLoggedIn()) {
+        await Api.sessions.complete(this.currentSession);
 
         // Save timer to focus_timers table
         const activeTimer = document.querySelector('.timer-btn.active');
         const duration = parseInt(activeTimer.getAttribute('data-time'));
-        const taskDescription = document.getElementById('taskDescription').value;
+        const taskDescription =
+          document.getElementById('taskDescription').value;
 
-        await fetch('http://localhost:3307/api/timers', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            timer_type: 'pomodoro',
-            duration: duration,
-            task_description: taskDescription
-          })
+        await Api.timers.create({
+          timer_type: 'pomodoro',
+          duration: duration,
+          task_description: taskDescription,
         });
       }
     } catch (error) {
@@ -240,21 +212,14 @@ export class FocusModePage {
 
   async loadStats() {
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
+      if (!Api.auth.isLoggedIn()) return;
 
-      const response = await fetch('http://localhost:3307/api/user/dashboard', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        document.getElementById('todaySessions').textContent = data.todayStats?.total_sessions || 0;
-        document.getElementById('totalTime').textContent = `${data.todayStats?.total_minutes || 0}m`;
-      }
+      const data = await Api.user.getDashboard();
+      document.getElementById('todaySessions').textContent =
+        data.todayStats?.total_sessions || 0;
+      document.getElementById('totalTime').textContent = `${
+        data.todayStats?.total_minutes || 0
+      }m`;
     } catch (error) {
       console.error('Error loading stats:', error);
     }

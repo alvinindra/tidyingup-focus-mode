@@ -14,7 +14,7 @@ async function apiCall(endpoint, options = {}) {
   const config = {
     headers: {
       'Content-Type': 'application/json',
-      ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      ...(authToken && { Authorization: `Bearer ${authToken}` }),
       ...options.headers,
     },
     ...options,
@@ -27,11 +27,11 @@ async function apiCall(endpoint, options = {}) {
   try {
     const response = await fetch(url, config);
     const data = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(data.error || 'API request failed');
     }
-    
+
     return data;
   } catch (error) {
     console.error('API call failed:', error);
@@ -44,11 +44,12 @@ async function apiCall(endpoint, options = {}) {
 // Inisialisasi Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(registration => {
         console.log('SW registered: ', registration);
       })
-      .catch((registrationError) => {
+      .catch(registrationError => {
         console.log('SW registration failed: ', registrationError);
       });
   });
@@ -73,8 +74,13 @@ let currentUser = null;
 // Check if user is logged in
 function checkAuth() {
   const user = localStorage.getItem('currentUser');
+  const token = localStorage.getItem('authToken');
+
   if (user) {
     currentUser = JSON.parse(user);
+    if (token) {
+      authToken = token;
+    }
     showMainApp();
   } else {
     showAuthPage();
@@ -190,86 +196,154 @@ function showAuthPage() {
     });
   });
 
-  document.getElementById('switchToRegister').addEventListener('click', (e) => {
+  document.getElementById('switchToRegister').addEventListener('click', e => {
     e.preventDefault();
     switchAuthTab('register');
   });
 
-  document.getElementById('switchToLogin').addEventListener('click', (e) => {
+  document.getElementById('switchToLogin').addEventListener('click', e => {
     e.preventDefault();
     switchAuthTab('login');
   });
 
   // Handle login
-  document.getElementById('loginForm').addEventListener('submit', (e) => {
+  document.getElementById('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
 
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const user = users.find(u => u.email === email && u.password === password);
+    try {
+      // Try API login first
+      const data = await apiCall('/auth/login', {
+        method: 'POST',
+        body: { email, password },
+      });
 
-    if (user) {
-      currentUser = user;
+      authToken = data.token;
+      localStorage.setItem('authToken', data.token);
+      currentUser = data.user;
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
       showMainApp();
       NotificationManager.show('Selamat Datang!', {
-        body: `Halo ${user.name}, selamat belajar!`,
-        icon: '/icons/icon-192x192.png'
+        body: `Halo ${currentUser.name}, selamat belajar!`,
+        icon: '/icons/icon-192x192.png',
       });
-    } else {
-      showToast('Email atau password salah!', 'error');
+    } catch (error) {
+      console.warn('API login failed, trying local login:', error.message);
+      // Fallback to local login
+      const users = JSON.parse(localStorage.getItem('users') || '[]');
+      const user = users.find(
+        u => u.email === email && u.password === password
+      );
+
+      if (user) {
+        currentUser = user;
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        showMainApp();
+        NotificationManager.show('Selamat Datang!', {
+          body: `Halo ${user.name}, selamat belajar!`,
+          icon: '/icons/icon-192x192.png',
+        });
+      } else {
+        showToast('Email atau password salah!', 'error');
+      }
     }
   });
 
   // Handle register
-  document.getElementById('registerForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const name = document.getElementById('regName').value.trim();
-    const email = document.getElementById('regEmail').value.trim();
-    const password = document.getElementById('regPassword').value;
-    const confirmPassword = document.getElementById('regConfirmPassword').value;
+  document
+    .getElementById('registerForm')
+    .addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = document.getElementById('regName').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
+      const password = document.getElementById('regPassword').value;
+      const confirmPassword =
+        document.getElementById('regConfirmPassword').value;
 
-    if (password !== confirmPassword) {
-      showToast('Password dan konfirmasi tidak cocok!', 'error');
-      return;
-    }
+      if (password !== confirmPassword) {
+        showToast('Password dan konfirmasi tidak cocok!', 'error');
+        return;
+      }
 
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    if (users.find(u => u.email === email)) {
-      showToast('Email sudah terdaftar!', 'error');
-      return;
-    }
+      if (password.length < 6) {
+        showToast('Password harus minimal 6 karakter!', 'error');
+        return;
+      }
 
-    const newUser = {
-      id: Date.now(),
-      name,
-      email,
-      password,
-      avatar: name.charAt(0).toUpperCase(),
-      createdAt: new Date().toISOString()
-    };
+      try {
+        // Try API registration first
+        const data = await apiCall('/auth/register', {
+          method: 'POST',
+          body: { name, email, password },
+        });
 
-    users.push(newUser);
-    localStorage.setItem('users', JSON.stringify(users));
+        authToken = data.token;
+        localStorage.setItem('authToken', data.token);
+        currentUser = data.user;
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        showMainApp();
+        showToast('Akun berhasil dibuat!', 'success');
+        NotificationManager.show('Akun Berhasil Dibuat!', {
+          body: `Selamat ${name}, akun premium Anda telah aktif!`,
+          icon: '/icons/icon-192x192.png',
+        });
+      } catch (error) {
+        console.warn(
+          'API registration failed, trying local registration:',
+          error.message
+        );
 
-    currentUser = newUser;
-    localStorage.setItem('currentUser', JSON.stringify(currentUser));
-    showMainApp();
-    showToast('Akun berhasil dibuat!', 'success');
-    NotificationManager.show('Akun Berhasil Dibuat!', {
-      body: `Selamat ${name}, akun premium Anda telah aktif!`,
-      icon: '/icons/icon-192x192.png'
+        // Check if error is about existing user
+        if (
+          error.message.includes('exists') ||
+          error.message.includes('terdaftar')
+        ) {
+          showToast('Email sudah terdaftar!', 'error');
+          return;
+        }
+
+        // Fallback to local registration
+        const users = JSON.parse(localStorage.getItem('users') || '[]');
+        if (users.find(u => u.email === email)) {
+          showToast('Email sudah terdaftar!', 'error');
+          return;
+        }
+
+        const newUser = {
+          id: Date.now(),
+          name,
+          email,
+          password,
+          avatar: name.charAt(0).toUpperCase(),
+          createdAt: new Date().toISOString(),
+        };
+
+        users.push(newUser);
+        localStorage.setItem('users', JSON.stringify(users));
+
+        currentUser = newUser;
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        showMainApp();
+        showToast('Akun berhasil dibuat (offline)!', 'success');
+        NotificationManager.show('Akun Berhasil Dibuat!', {
+          body: `Selamat ${name}, akun premium Anda telah aktif!`,
+          icon: '/icons/icon-192x192.png',
+        });
+      }
     });
-  });
 }
 
 function switchAuthTab(tabName) {
   document.querySelectorAll('.auth-tab').forEach(tab => {
     tab.classList.toggle('active', tab.getAttribute('data-tab') === tabName);
   });
-  document.getElementById('loginForm').classList.toggle('active', tabName === 'login');
-  document.getElementById('registerForm').classList.toggle('active', tabName === 'register');
+  document
+    .getElementById('loginForm')
+    .classList.toggle('active', tabName === 'login');
+  document
+    .getElementById('registerForm')
+    .classList.toggle('active', tabName === 'register');
 }
 
 // Show main application
@@ -281,7 +355,9 @@ function showMainApp() {
   const userProfile = document.getElementById('user-profile');
   if (userProfile) {
     document.getElementById('user-name').textContent = currentUser.name;
-    document.getElementById('user-avatar').innerHTML = `<span class="avatar-initial premium-avatar">${currentUser.avatar}</span>`;
+    document.getElementById(
+      'user-avatar'
+    ).innerHTML = `<span class="avatar-initial premium-avatar">${currentUser.avatar}</span>`;
   }
 
   loadPage();
@@ -290,23 +366,58 @@ function showMainApp() {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
       localStorage.removeItem('currentUser');
+      localStorage.removeItem('authToken');
+      authToken = null;
       currentUser = null;
       location.reload();
     });
   }
 }
 
-// Data management
+// Data management with API integration
 const DataManager = {
-  getNotes() {
+  // Notes
+  async getNotes() {
+    try {
+      if (authToken) {
+        return await apiCall('/notes');
+      }
+    } catch (error) {
+      console.warn('API getNotes failed, using localStorage:', error.message);
+    }
     return JSON.parse(localStorage.getItem(`notes_${currentUser.id}`) || '[]');
   },
-  saveNote(note) {
-    const notes = this.getNotes();
+
+  async saveNote(note) {
+    try {
+      if (authToken) {
+        if (note.id) {
+          await apiCall(`/notes/${note.id}`, { method: 'PUT', body: note });
+          return note;
+        } else {
+          const result = await apiCall('/notes', {
+            method: 'POST',
+            body: note,
+          });
+          return { ...note, id: result.id };
+        }
+      }
+    } catch (error) {
+      console.warn('API saveNote failed, using localStorage:', error.message);
+    }
+
+    // Fallback to localStorage
+    const notes = JSON.parse(
+      localStorage.getItem(`notes_${currentUser.id}`) || '[]'
+    );
     if (note.id) {
       const index = notes.findIndex(n => n.id === note.id);
       if (index !== -1) {
-        notes[index] = { ...notes[index], ...note, updatedAt: new Date().toISOString() };
+        notes[index] = {
+          ...notes[index],
+          ...note,
+          updatedAt: new Date().toISOString(),
+        };
       }
     } else {
       note.id = Date.now();
@@ -318,20 +429,64 @@ const DataManager = {
     localStorage.setItem(`notes_${currentUser.id}`, JSON.stringify(notes));
     return note;
   },
-  deleteNote(id) {
-    const notes = this.getNotes().filter(n => n.id !== id);
+
+  async deleteNote(id) {
+    try {
+      if (authToken) {
+        await apiCall(`/notes/${id}`, { method: 'DELETE' });
+        return;
+      }
+    } catch (error) {
+      console.warn('API deleteNote failed, using localStorage:', error.message);
+    }
+    const notes = JSON.parse(
+      localStorage.getItem(`notes_${currentUser.id}`) || '[]'
+    ).filter(n => n.id !== id);
     localStorage.setItem(`notes_${currentUser.id}`, JSON.stringify(notes));
   },
 
-  getBooks() {
+  // Books
+  async getBooks() {
+    try {
+      if (authToken) {
+        return await apiCall('/books');
+      }
+    } catch (error) {
+      console.warn('API getBooks failed, using localStorage:', error.message);
+    }
     return JSON.parse(localStorage.getItem(`books_${currentUser.id}`) || '[]');
   },
-  saveBook(book) {
-    const books = this.getBooks();
+
+  async saveBook(book) {
+    try {
+      if (authToken) {
+        if (book.id) {
+          await apiCall(`/books/${book.id}`, { method: 'PUT', body: book });
+          return book;
+        } else {
+          const result = await apiCall('/books', {
+            method: 'POST',
+            body: book,
+          });
+          return { ...book, id: result.id };
+        }
+      }
+    } catch (error) {
+      console.warn('API saveBook failed, using localStorage:', error.message);
+    }
+
+    // Fallback to localStorage
+    const books = JSON.parse(
+      localStorage.getItem(`books_${currentUser.id}`) || '[]'
+    );
     if (book.id) {
       const index = books.findIndex(b => b.id === book.id);
       if (index !== -1) {
-        books[index] = { ...books[index], ...book, updatedAt: new Date().toISOString() };
+        books[index] = {
+          ...books[index],
+          ...book,
+          updatedAt: new Date().toISOString(),
+        };
       }
     } else {
       book.id = Date.now();
@@ -344,19 +499,176 @@ const DataManager = {
     localStorage.setItem(`books_${currentUser.id}`, JSON.stringify(books));
     return book;
   },
-  deleteBook(id) {
-    const books = this.getBooks().filter(b => b.id !== id);
+
+  async deleteBook(id) {
+    try {
+      if (authToken) {
+        await apiCall(`/books/${id}`, { method: 'DELETE' });
+        return;
+      }
+    } catch (error) {
+      console.warn('API deleteBook failed, using localStorage:', error.message);
+    }
+    const books = JSON.parse(
+      localStorage.getItem(`books_${currentUser.id}`) || '[]'
+    ).filter(b => b.id !== id);
     localStorage.setItem(`books_${currentUser.id}`, JSON.stringify(books));
   },
-  toggleBookStatus(id) {
-    const books = this.getBooks();
+
+  async toggleBookStatus(id) {
+    try {
+      if (authToken) {
+        await apiCall(`/books/${id}/toggle`, { method: 'POST' });
+        return;
+      }
+    } catch (error) {
+      console.warn(
+        'API toggleBookStatus failed, using localStorage:',
+        error.message
+      );
+    }
+    const books = JSON.parse(
+      localStorage.getItem(`books_${currentUser.id}`) || '[]'
+    );
     const book = books.find(b => b.id === id);
     if (book) {
       book.isComplete = !book.isComplete;
       book.updatedAt = new Date().toISOString();
       localStorage.setItem(`books_${currentUser.id}`, JSON.stringify(books));
     }
-  }
+  },
+
+  // Sessions
+  async getSessions() {
+    try {
+      if (authToken) {
+        return await apiCall('/sessions');
+      }
+    } catch (error) {
+      console.warn(
+        'API getSessions failed, using localStorage:',
+        error.message
+      );
+    }
+    return JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    );
+  },
+
+  async saveSession(session) {
+    try {
+      if (authToken) {
+        if (session.id) {
+          await apiCall(`/sessions/${session.id}`, {
+            method: 'PUT',
+            body: session,
+          });
+          return session;
+        } else {
+          const result = await apiCall('/sessions', {
+            method: 'POST',
+            body: session,
+          });
+          return { ...session, id: result.id };
+        }
+      }
+    } catch (error) {
+      console.warn(
+        'API saveSession failed, using localStorage:',
+        error.message
+      );
+    }
+
+    const sessions = JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    );
+    if (session.id) {
+      const index = sessions.findIndex(s => s.id === session.id);
+      if (index !== -1) {
+        sessions[index] = {
+          ...sessions[index],
+          ...session,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      session.id = Date.now();
+      session.createdAt = new Date().toISOString();
+      session.updatedAt = session.createdAt;
+      session.userId = currentUser.id;
+      sessions.push(session);
+    }
+    localStorage.setItem(
+      `sessions_${currentUser.id}`,
+      JSON.stringify(sessions)
+    );
+    return session;
+  },
+
+  async completeSession(id) {
+    try {
+      if (authToken) {
+        await apiCall(`/sessions/${id}/complete`, { method: 'POST' });
+        return;
+      }
+    } catch (error) {
+      console.warn(
+        'API completeSession failed, using localStorage:',
+        error.message
+      );
+    }
+    const sessions = JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    );
+    const session = sessions.find(s => s.id === id);
+    if (session) {
+      session.status = 'completed';
+      session.completedAt = new Date().toISOString();
+      localStorage.setItem(
+        `sessions_${currentUser.id}`,
+        JSON.stringify(sessions)
+      );
+    }
+  },
+
+  // Dashboard
+  async getDashboard() {
+    try {
+      if (authToken) {
+        return await apiCall('/user/dashboard');
+      }
+    } catch (error) {
+      console.warn('API getDashboard failed:', error.message);
+    }
+    // Return local stats
+    const sessions = JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    );
+    const notes = JSON.parse(
+      localStorage.getItem(`notes_${currentUser.id}`) || '[]'
+    );
+    const books = JSON.parse(
+      localStorage.getItem(`books_${currentUser.id}`) || '[]'
+    );
+
+    const completedSessions = sessions.filter(s => s.status === 'completed');
+    const totalMinutes = completedSessions.reduce(
+      (sum, s) => sum + (s.duration || 0),
+      0
+    );
+
+    return {
+      dashboard: {
+        completed_sessions: completedSessions.length,
+        total_notes: notes.length,
+        total_books: books.length,
+      },
+      todayStats: {
+        total_minutes: totalMinutes,
+        total_sessions: completedSessions.length,
+      },
+    };
+  },
 };
 
 // Focus Mode Timer
@@ -369,14 +681,19 @@ let currentTimerType = 'pomodoro';
 const TimerManager = {
   startTimer(minutes = 25) {
     if (isTimerRunning) return;
-    
+
     timerMinutes = minutes;
     timerSeconds = 0;
     isTimerRunning = true;
-    currentTimerType = minutes === 25 ? 'pomodoro' : minutes === 5 ? 'short-break' : 'long-break';
-    
+    currentTimerType =
+      minutes === 25
+        ? 'pomodoro'
+        : minutes === 5
+        ? 'short-break'
+        : 'long-break';
+
     this.updateTimerDisplay();
-    
+
     timerInterval = setInterval(() => {
       if (timerSeconds === 0) {
         if (timerMinutes === 0) {
@@ -390,90 +707,92 @@ const TimerManager = {
       }
       this.updateTimerDisplay();
     }, 1000);
-    
+
     // Update UI
     const startBtn = document.getElementById('start-timer');
     const pauseBtn = document.getElementById('pause-timer');
     const resetBtn = document.getElementById('reset-timer');
-    
+
     if (startBtn) startBtn.disabled = true;
     if (pauseBtn) pauseBtn.disabled = false;
     if (resetBtn) resetBtn.disabled = false;
-    
+
     // Show notification
     NotificationManager.show('Timer Dimulai!', {
       body: `Fokus selama ${minutes} menit dimulai sekarang!`,
-      icon: '/icons/icon-192x192.png'
+      icon: '/icons/icon-192x192.png',
     });
   },
-  
+
   pauseTimer() {
     if (!isTimerRunning) return;
-    
+
     clearInterval(timerInterval);
     isTimerRunning = false;
-    
+
     // Update UI
     const startBtn = document.getElementById('start-timer');
     const pauseBtn = document.getElementById('pause-timer');
-    
+
     if (startBtn) startBtn.disabled = false;
     if (pauseBtn) pauseBtn.disabled = true;
-    
+
     // Show notification
     NotificationManager.show('Timer Dijeda', {
       body: 'Sesi fokus Anda telah dijeda.',
-      icon: '/icons/icon-192x192.png'
+      icon: '/icons/icon-192x192.png',
     });
   },
-  
+
   resetTimer() {
     clearInterval(timerInterval);
     isTimerRunning = false;
-    
+
     // Reset to current timer type
     if (currentTimerType === 'pomodoro') timerMinutes = 25;
     else if (currentTimerType === 'short-break') timerMinutes = 5;
     else timerMinutes = 15;
-    
+
     timerSeconds = 0;
     this.updateTimerDisplay();
-    
+
     // Update UI
     const startBtn = document.getElementById('start-timer');
     const pauseBtn = document.getElementById('pause-timer');
     const resetBtn = document.getElementById('reset-timer');
-    
+
     if (startBtn) startBtn.disabled = false;
     if (pauseBtn) pauseBtn.disabled = true;
     if (resetBtn) resetBtn.disabled = false;
   },
-  
+
   updateTimerDisplay() {
     const display = document.querySelector('.timer-display');
     if (display) {
-      display.textContent = `${timerMinutes.toString().padStart(2, '0')}:${timerSeconds.toString().padStart(2, '0')}`;
+      display.textContent = `${timerMinutes
+        .toString()
+        .padStart(2, '0')}:${timerSeconds.toString().padStart(2, '0')}`;
     }
   },
-  
+
   timerComplete() {
     clearInterval(timerInterval);
     isTimerRunning = false;
-    
+
     // Show notification
     showToast('Timer selesai!', 'success');
     NotificationManager.showTimerComplete();
-    
+
     // Play sound (jika diperlukan)
     this.playCompletionSound();
-    
+
     // Update UI
     const startBtn = document.getElementById('start-timer');
     const pauseBtn = document.getElementById('pause-timer');
-    
+
     if (startBtn) startBtn.disabled = false;
     if (pauseBtn) pauseBtn.disabled = true;
-    
+
     // Auto-start break if it was a pomodoro session
     if (currentTimerType === 'pomodoro') {
       setTimeout(() => {
@@ -483,25 +802,31 @@ const TimerManager = {
       }, 1000);
     }
   },
-  
+
   playCompletionSound() {
     // Implement sound notification jika diperlukan
     console.log('Timer completed - play sound');
-  }
+  },
 };
 
 // Session Manager
 const SessionManager = {
   getSessions() {
-    return JSON.parse(localStorage.getItem(`sessions_${currentUser.id}`) || '[]');
+    return JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    );
   },
-  
+
   saveSession(session) {
     const sessions = this.getSessions();
     if (session.id) {
       const index = sessions.findIndex(s => s.id === session.id);
       if (index !== -1) {
-        sessions[index] = { ...sessions[index], ...session, updatedAt: new Date().toISOString() };
+        sessions[index] = {
+          ...sessions[index],
+          ...session,
+          updatedAt: new Date().toISOString(),
+        };
       }
     } else {
       session.id = Date.now();
@@ -511,34 +836,46 @@ const SessionManager = {
       session.status = 'planned';
       sessions.push(session);
     }
-    localStorage.setItem(`sessions_${currentUser.id}`, JSON.stringify(sessions));
+    localStorage.setItem(
+      `sessions_${currentUser.id}`,
+      JSON.stringify(sessions)
+    );
     return session;
   },
-  
+
   deleteSession(id) {
     const sessions = this.getSessions().filter(s => s.id !== id);
-    localStorage.setItem(`sessions_${currentUser.id}`, JSON.stringify(sessions));
+    localStorage.setItem(
+      `sessions_${currentUser.id}`,
+      JSON.stringify(sessions)
+    );
   },
-  
+
   startSession(id) {
     const sessions = this.getSessions();
     const session = sessions.find(s => s.id === id);
     if (session) {
       session.status = 'inprogress';
       session.startedAt = new Date().toISOString();
-      localStorage.setItem(`sessions_${currentUser.id}`, JSON.stringify(sessions));
+      localStorage.setItem(
+        `sessions_${currentUser.id}`,
+        JSON.stringify(sessions)
+      );
     }
   },
-  
+
   completeSession(id) {
     const sessions = this.getSessions();
     const session = sessions.find(s => s.id === id);
     if (session) {
       session.status = 'completed';
       session.completedAt = new Date().toISOString();
-      localStorage.setItem(`sessions_${currentUser.id}`, JSON.stringify(sessions));
+      localStorage.setItem(
+        `sessions_${currentUser.id}`,
+        JSON.stringify(sessions)
+      );
     }
-  }
+  },
 };
 
 // Modal Manager - FIXED VERSION
@@ -565,9 +902,11 @@ const ModalManager = {
     document.body.appendChild(modal);
 
     // Add event listeners
-    modal.querySelector('.close-modal').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { 
-      if (e.target === modal) modal.remove(); 
+    modal
+      .querySelector('.close-modal')
+      .addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', e => {
+      if (e.target === modal) modal.remove();
     });
 
     return modal;
@@ -579,44 +918,64 @@ const ModalManager = {
       <form id="noteForm" class="premium-form">
         <div class="form-group">
           <label>Judul Catatan</label>
-          <input type="text" id="noteTitle" value="${note?.title || ''}" required class="premium-input">
+          <input type="text" id="noteTitle" value="${
+            note?.title || ''
+          }" required class="premium-input">
         </div>
         <div class="form-group">
           <label>Isi Catatan</label>
-          <textarea id="noteContent" rows="6" required class="premium-input">${note?.content || ''}</textarea>
+          <textarea id="noteContent" rows="6" required class="premium-input">${
+            note?.content || ''
+          }</textarea>
         </div>
         <div class="form-group">
           <label>Kategori</label>
           <select id="noteCategory" class="premium-input">
-            ${['study', 'personal', 'work', 'other'].map(cat => `
-              <option value="${cat}" ${note?.category === cat ? 'selected' : ''}>
+            ${['study', 'personal', 'work', 'other']
+              .map(
+                cat => `
+              <option value="${cat}" ${
+                  note?.category === cat ? 'selected' : ''
+                }>
                 ${getCategoryLabel(cat)}
               </option>
-            `).join('')}
+            `
+              )
+              .join('')}
           </select>
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
           <button type="button" class="btn btn-secondary premium-btn-secondary" id="cancelNote">Batal</button>
-          <button type="submit" class="btn premium-btn">${isEdit ? 'Update' : 'Simpan'}</button>
+          <button type="submit" class="btn premium-btn">${
+            isEdit ? 'Update' : 'Simpan'
+          }</button>
         </div>
       </form>
     `;
 
-    const modal = this.showModal(isEdit ? 'Edit Catatan' : 'Tambah Catatan', content);
-    
+    const modal = this.showModal(
+      isEdit ? 'Edit Catatan' : 'Tambah Catatan',
+      content
+    );
+
     // Add event listeners
-    modal.querySelector('#cancelNote').addEventListener('click', () => modal.remove());
-    modal.querySelector('#noteForm').addEventListener('submit', (e) => {
+    modal
+      .querySelector('#cancelNote')
+      .addEventListener('click', () => modal.remove());
+    modal.querySelector('#noteForm').addEventListener('submit', e => {
       e.preventDefault();
       const data = {
         title: document.getElementById('noteTitle').value.trim(),
         content: document.getElementById('noteContent').value.trim(),
-        category: document.getElementById('noteCategory').value
+        category: document.getElementById('noteCategory').value,
       };
       if (isEdit) data.id = note.id;
       DataManager.saveNote(data);
       modal.remove();
-      showToast(isEdit ? 'Catatan diperbarui!' : 'Catatan ditambahkan!', 'success');
+      showToast(
+        isEdit ? 'Catatan diperbarui!' : 'Catatan ditambahkan!',
+        'success'
+      );
       loadPage();
     });
   },
@@ -627,44 +986,60 @@ const ModalManager = {
       <form id="bookForm" class="premium-form">
         <div class="form-group">
           <label>Judul Buku</label>
-          <input type="text" id="bookTitle" value="${book?.title || ''}" required class="premium-input">
+          <input type="text" id="bookTitle" value="${
+            book?.title || ''
+          }" required class="premium-input">
         </div>
         <div class="form-group">
           <label>Penulis</label>
-          <input type="text" id="bookAuthor" value="${book?.author || ''}" required class="premium-input">
+          <input type="text" id="bookAuthor" value="${
+            book?.author || ''
+          }" required class="premium-input">
         </div>
         <div class="form-group">
           <label>Deskripsi</label>
-          <textarea id="bookDescription" rows="4" class="premium-input">${book?.description || ''}</textarea>
+          <textarea id="bookDescription" rows="4" class="premium-input">${
+            book?.description || ''
+          }</textarea>
         </div>
         <div class="form-group">
           <label>Kategori</label>
           <select id="bookCategory" class="premium-input">
-            ${['academic', 'fiction', 'non-fiction', 'reference'].map(cat => `
-              <option value="${cat}" ${book?.category === cat ? 'selected' : ''}>
+            ${['academic', 'fiction', 'non-fiction', 'reference']
+              .map(
+                cat => `
+              <option value="${cat}" ${
+                  book?.category === cat ? 'selected' : ''
+                }>
                 ${getBookCategoryLabel(cat)}
               </option>
-            `).join('')}
+            `
+              )
+              .join('')}
           </select>
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
           <button type="button" class="btn btn-secondary premium-btn-secondary" id="cancelBook">Batal</button>
-          <button type="submit" class="btn premium-btn">${isEdit ? 'Update' : 'Simpan'}</button>
+          <button type="submit" class="btn premium-btn">${
+            isEdit ? 'Update' : 'Simpan'
+          }</button>
         </div>
       </form>
     `;
 
     const modal = this.showModal(isEdit ? 'Edit Buku' : 'Tambah Buku', content);
-    
+
     // Add event listeners
-    modal.querySelector('#cancelBook').addEventListener('click', () => modal.remove());
-    modal.querySelector('#bookForm').addEventListener('submit', (e) => {
+    modal
+      .querySelector('#cancelBook')
+      .addEventListener('click', () => modal.remove());
+    modal.querySelector('#bookForm').addEventListener('submit', e => {
       e.preventDefault();
       const data = {
         title: document.getElementById('bookTitle').value.trim(),
         author: document.getElementById('bookAuthor').value.trim(),
         description: document.getElementById('bookDescription').value.trim(),
-        category: document.getElementById('bookCategory').value
+        category: document.getElementById('bookCategory').value,
       };
       if (isEdit) data.id = book.id;
       DataManager.saveBook(data);
@@ -680,38 +1055,53 @@ const ModalManager = {
       <form id="sessionForm" class="premium-form">
         <div class="form-group">
           <label>Judul Sesi</label>
-          <input type="text" id="sessionTitle" value="${session?.title || ''}" required class="premium-input">
+          <input type="text" id="sessionTitle" value="${
+            session?.title || ''
+          }" required class="premium-input">
         </div>
         <div class="form-group">
           <label>Deskripsi</label>
-          <textarea id="sessionDescription" rows="3" class="premium-input">${session?.description || ''}</textarea>
+          <textarea id="sessionDescription" rows="3" class="premium-input">${
+            session?.description || ''
+          }</textarea>
         </div>
         <div class="form-group">
           <label>Durasi (menit)</label>
-          <input type="number" id="sessionDuration" value="${session?.duration || 25}" min="5" max="180" required class="premium-input">
+          <input type="number" id="sessionDuration" value="${
+            session?.duration || 25
+          }" min="5" max="180" required class="premium-input">
         </div>
         <div class="form-group">
           <label>Mata Pelajaran/Topik</label>
-          <input type="text" id="sessionSubject" value="${session?.subject || ''}" required class="premium-input">
+          <input type="text" id="sessionSubject" value="${
+            session?.subject || ''
+          }" required class="premium-input">
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
           <button type="button" class="btn btn-secondary premium-btn-secondary" id="cancelSession">Batal</button>
-          <button type="submit" class="btn premium-btn">${isEdit ? 'Update' : 'Simpan'}</button>
+          <button type="submit" class="btn premium-btn">${
+            isEdit ? 'Update' : 'Simpan'
+          }</button>
         </div>
       </form>
     `;
 
-    const modal = this.showModal(isEdit ? 'Edit Sesi Belajar' : 'Tambah Sesi Belajar', content);
-    
+    const modal = this.showModal(
+      isEdit ? 'Edit Sesi Belajar' : 'Tambah Sesi Belajar',
+      content
+    );
+
     // Add event listeners
-    modal.querySelector('#cancelSession').addEventListener('click', () => modal.remove());
-    modal.querySelector('#sessionForm').addEventListener('submit', (e) => {
+    modal
+      .querySelector('#cancelSession')
+      .addEventListener('click', () => modal.remove());
+    modal.querySelector('#sessionForm').addEventListener('submit', e => {
       e.preventDefault();
       const data = {
         title: document.getElementById('sessionTitle').value.trim(),
         description: document.getElementById('sessionDescription').value.trim(),
         duration: parseInt(document.getElementById('sessionDuration').value),
-        subject: document.getElementById('sessionSubject').value.trim()
+        subject: document.getElementById('sessionSubject').value.trim(),
       };
       if (isEdit) data.id = session.id;
       SessionManager.saveSession(data);
@@ -719,7 +1109,7 @@ const ModalManager = {
       showToast(isEdit ? 'Sesi diperbarui!' : 'Sesi ditambahkan!', 'success');
       loadPage();
     });
-  }
+  },
 };
 
 // Render Notification Settings Page
@@ -733,7 +1123,9 @@ function renderNotificationSettings() {
         <div class="settings-card premium-card" style="max-width: 600px; margin: 0 auto;">
           <div class="form-group">
             <label class="checkbox-label">
-              <input type="checkbox" id="push-enabled" ${NotificationManager.getSettings().isPushEnabled ? 'checked' : ''}>
+              <input type="checkbox" id="push-enabled" ${
+                NotificationManager.getSettings().isPushEnabled ? 'checked' : ''
+              }>
               <span>Web Push Notifications</span>
             </label>
             <small>Terima notifikasi bahkan ketika aplikasi tidak terbuka</small>
@@ -741,7 +1133,11 @@ function renderNotificationSettings() {
          
           <div class="form-group">
             <label class="checkbox-label">
-              <input type="checkbox" id="daily-reminders" ${NotificationManager.getSettings().dailyReminders ? 'checked' : ''}>
+              <input type="checkbox" id="daily-reminders" ${
+                NotificationManager.getSettings().dailyReminders
+                  ? 'checked'
+                  : ''
+              }>
               <span>Pengingat Harian</span>
             </label>
             <small>Notifikasi pengingat belajar setiap hari</small>
@@ -749,7 +1145,11 @@ function renderNotificationSettings() {
          
           <div class="form-group">
             <label class="checkbox-label">
-              <input type="checkbox" id="session-reminders" ${NotificationManager.getSettings().sessionReminders ? 'checked' : ''}>
+              <input type="checkbox" id="session-reminders" ${
+                NotificationManager.getSettings().sessionReminders
+                  ? 'checked'
+                  : ''
+              }>
               <span>Pengingat Sesi</span>
             </label>
             <small>Pengingat sebelum sesi belajar dimulai</small>
@@ -757,7 +1157,11 @@ function renderNotificationSettings() {
          
           <div class="form-group">
             <label class="checkbox-label">
-              <input type="checkbox" id="achievement-alerts" ${NotificationManager.getSettings().achievementAlerts ? 'checked' : ''}>
+              <input type="checkbox" id="achievement-alerts" ${
+                NotificationManager.getSettings().achievementAlerts
+                  ? 'checked'
+                  : ''
+              }>
               <span>Pencapaian & Laporan</span>
             </label>
             <small>Notifikasi pencapaian dan laporan mingguan</small>
@@ -775,8 +1179,12 @@ function renderNotificationSettings() {
           <div class="notification-status" style="margin-top: 1.5rem; padding: 1rem; background: var(--soft-blue); border-radius: var(--border-radius-md);">
             <h4>Status Notifikasi:</h4>
             <p>Permission: <strong>${Notification.permission}</strong></p>
-            <p>Service Worker: <strong>${'serviceWorker' in navigator ? 'Supported' : 'Not Supported'}</strong></p>
-            <p>Push Manager: <strong>${'PushManager' in window ? 'Supported' : 'Not Supported'}</strong></p>
+            <p>Service Worker: <strong>${
+              'serviceWorker' in navigator ? 'Supported' : 'Not Supported'
+            }</strong></p>
+            <p>Push Manager: <strong>${
+              'PushManager' in window ? 'Supported' : 'Not Supported'
+            }</strong></p>
           </div>
         </div>
       </div>
@@ -788,26 +1196,27 @@ function renderNotificationSettings() {
 function initializeNotificationSettings() {
   const saveBtn = document.getElementById('save-notification-settings');
   const testBtn = document.getElementById('test-notification');
- 
+
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
       const settings = {
         pushEnabled: document.getElementById('push-enabled').checked,
         dailyReminders: document.getElementById('daily-reminders').checked,
         sessionReminders: document.getElementById('session-reminders').checked,
-        achievementAlerts: document.getElementById('achievement-alerts').checked
+        achievementAlerts:
+          document.getElementById('achievement-alerts').checked,
       };
-     
+
       NotificationManager.updateSettings(settings);
       showToast('Pengaturan notifikasi disimpan!', 'success');
-     
+
       // Jika daily reminders diaktifkan, jadwalkan pengingat
       if (settings.dailyReminders) {
         NotificationManager.scheduleDailyReminder(8, 0); // Setiap jam 8 pagi
       }
     });
   }
- 
+
   if (testBtn) {
     testBtn.addEventListener('click', () => {
       NotificationManager.testNotification();
@@ -827,7 +1236,7 @@ function loadPage() {
     'sesi-belajar': renderSessionsPage(),
     catatan: renderNotesPage(),
     'rak-buku': renderBooksPage(),
-    'pengaturan-notifikasi': renderNotificationSettings()
+    'pengaturan-notifikasi': renderNotificationSettings(),
   };
 
   mainContent.innerHTML = pages[hash] || pages.beranda;
@@ -1052,7 +1461,7 @@ function initializeFocusModePage() {
       timerButtons.forEach(b => b.classList.remove('active'));
       // Add active class to clicked button
       btn.classList.add('active');
-      
+
       // Reset timer dengan durasi baru
       const minutes = parseInt(btn.getAttribute('data-minutes'));
       TimerManager.resetTimer();
@@ -1066,9 +1475,14 @@ function initializeFocusModePage() {
   const pauseBtn = document.getElementById('pause-timer');
   const resetBtn = document.getElementById('reset-timer');
 
-  if (startBtn) startBtn.addEventListener('click', () => TimerManager.startTimer(timerMinutes));
-  if (pauseBtn) pauseBtn.addEventListener('click', () => TimerManager.pauseTimer());
-  if (resetBtn) resetBtn.addEventListener('click', () => TimerManager.resetTimer());
+  if (startBtn)
+    startBtn.addEventListener('click', () =>
+      TimerManager.startTimer(timerMinutes)
+    );
+  if (pauseBtn)
+    pauseBtn.addEventListener('click', () => TimerManager.pauseTimer());
+  if (resetBtn)
+    resetBtn.addEventListener('click', () => TimerManager.resetTimer());
 
   // Task input
   const currentTask = document.getElementById('current-task');
@@ -1097,31 +1511,46 @@ function initializeSessionsPage() {
       </div>
     `;
   } else {
-    sessionList.innerHTML = sessions.map(session => `
+    sessionList.innerHTML = sessions
+      .map(
+        session => `
       <div class="session-card premium-card" data-session-id="${session.id}">
         <div class="session-header">
           <h3>${session.title}</h3>
           <span class="session-status ${session.status}">
-            ${session.status === 'planned' ? 'Direncanakan' : 
-              session.status === 'inprogress' ? 'Berlangsung' : 'Selesai'}
+            ${
+              session.status === 'planned'
+                ? 'Direncanakan'
+                : session.status === 'inprogress'
+                ? 'Berlangsung'
+                : 'Selesai'
+            }
           </span>
         </div>
         <div class="session-details">
           <p><strong>Topik:</strong> ${session.subject}</p>
           <p><strong>Durasi:</strong> ${session.duration} menit</p>
           <p><strong>Deskripsi:</strong> ${session.description || '-'}</p>
-          <p><strong>Dibuat:</strong> ${new Date(session.createdAt).toLocaleDateString('id-ID')}</p>
+          <p><strong>Dibuat:</strong> ${new Date(
+            session.createdAt
+          ).toLocaleDateString('id-ID')}</p>
         </div>
         <div class="session-actions">
-          ${session.status === 'planned' ? `
+          ${
+            session.status === 'planned'
+              ? `
             <button class="action-btn start-btn premium-action-btn" data-action="start">
               <i class="fas fa-play"></i> Mulai
             </button>
-          ` : session.status === 'inprogress' ? `
+          `
+              : session.status === 'inprogress'
+              ? `
             <button class="action-btn complete-btn premium-action-btn" data-action="complete">
               <i class="fas fa-check"></i> Selesai
             </button>
-          ` : ''}
+          `
+              : ''
+          }
           <button class="action-btn edit-btn premium-action-btn" data-action="edit">
             <i class="fas fa-edit"></i> Edit
           </button>
@@ -1130,7 +1559,9 @@ function initializeSessionsPage() {
           </button>
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
     // Event delegation untuk session actions
     sessionList.addEventListener('click', handleSessionAction);
@@ -1142,7 +1573,7 @@ function initializeSessionsPage() {
     // Remove any existing event listeners
     const newBtn = addSessionBtn.cloneNode(true);
     addSessionBtn.parentNode.replaceChild(newBtn, addSessionBtn);
-    
+
     // Add new event listener
     document.getElementById('add-session').addEventListener('click', () => {
       ModalManager.showSessionModal();
@@ -1156,7 +1587,8 @@ function initializeNotesPage() {
   if (!notesGrid) return;
 
   const notes = DataManager.getNotes();
-  const filter = document.getElementById('note-category-filter')?.value || 'all';
+  const filter =
+    document.getElementById('note-category-filter')?.value || 'all';
 
   if (notes.length === 0) {
     notesGrid.innerHTML = `
@@ -1167,7 +1599,8 @@ function initializeNotesPage() {
       </div>
     `;
   } else {
-    const filteredNotes = filter === 'all' ? notes : notes.filter(note => note.category === filter);
+    const filteredNotes =
+      filter === 'all' ? notes : notes.filter(note => note.category === filter);
 
     if (filteredNotes.length === 0) {
       notesGrid.innerHTML = `
@@ -1178,13 +1611,19 @@ function initializeNotesPage() {
         </div>
       `;
     } else {
-      notesGrid.innerHTML = filteredNotes.map(note => `
+      notesGrid.innerHTML = filteredNotes
+        .map(
+          note => `
         <div class="note-card premium-card" data-note-id="${note.id}">
           <div class="note-header">
             <h3>${note.title}</h3>
-            <span class="note-category ${note.category}">${getCategoryLabel(note.category)}</span>
+            <span class="note-category ${note.category}">${getCategoryLabel(
+            note.category
+          )}</span>
           </div>
-          <div class="note-date">${new Date(note.createdAt).toLocaleDateString('id-ID')}</div>
+          <div class="note-date">${new Date(note.createdAt).toLocaleDateString(
+            'id-ID'
+          )}</div>
           <div class="note-body">${note.content}</div>
           <div class="note-actions">
             <button class="action-btn edit-btn premium-action-btn" data-action="edit">
@@ -1195,7 +1634,9 @@ function initializeNotesPage() {
             </button>
           </div>
         </div>
-      `).join('');
+      `
+        )
+        .join('');
 
       // Event delegation
       notesGrid.addEventListener('click', handleNoteAction);
@@ -1214,7 +1655,7 @@ function initializeNotesPage() {
     // Remove any existing event listeners
     const newBtn = addNoteBtn.cloneNode(true);
     addNoteBtn.parentNode.replaceChild(newBtn, addNoteBtn);
-    
+
     // Add new event listener
     document.getElementById('add-note').addEventListener('click', () => {
       ModalManager.showNoteModal();
@@ -1232,16 +1673,27 @@ function initializeBooksPage() {
   const readingBooks = books.filter(book => !book.isComplete);
   const completedBooks = books.filter(book => book.isComplete);
 
-  readingContainer.innerHTML = readingBooks.length === 0
-    ? '<p class="empty-state premium-empty-state">Belum ada buku yang sedang dibaca</p>'
-    : readingBooks.map(book => `
+  readingContainer.innerHTML =
+    readingBooks.length === 0
+      ? '<p class="empty-state premium-empty-state">Belum ada buku yang sedang dibaca</p>'
+      : readingBooks
+          .map(
+            book => `
       <div class="book-card premium-card" data-book-id="${book.id}">
         <div class="book-info">
           <h4>${book.title}</h4>
           <p><strong>Penulis:</strong> ${book.author}</p>
-          <p><strong>Kategori:</strong> ${getBookCategoryLabel(book.category)}</p>
-          ${book.description ? `<p class="book-description">${book.description}</p>` : ''}
-          <p class="book-date">Ditambahkan: ${new Date(book.createdAt).toLocaleDateString('id-ID')}</p>
+          <p><strong>Kategori:</strong> ${getBookCategoryLabel(
+            book.category
+          )}</p>
+          ${
+            book.description
+              ? `<p class="book-description">${book.description}</p>`
+              : ''
+          }
+          <p class="book-date">Ditambahkan: ${new Date(
+            book.createdAt
+          ).toLocaleDateString('id-ID')}</p>
         </div>
         <div class="book-actions">
           <button class="move-btn premium-action-btn" data-action="toggle">
@@ -1255,18 +1707,31 @@ function initializeBooksPage() {
           </button>
         </div>
       </div>
-    `).join('');
+    `
+          )
+          .join('');
 
-  completedContainer.innerHTML = completedBooks.length === 0
-    ? '<p class="empty-state premium-empty-state">Belum ada buku yang selesai dibaca</p>'
-    : completedBooks.map(book => `
+  completedContainer.innerHTML =
+    completedBooks.length === 0
+      ? '<p class="empty-state premium-empty-state">Belum ada buku yang selesai dibaca</p>'
+      : completedBooks
+          .map(
+            book => `
       <div class="book-card premium-card" data-book-id="${book.id}">
         <div class="book-info">
           <h4>${book.title}</h4>
           <p><strong>Penulis:</strong> ${book.author}</p>
-          <p><strong>Kategori:</strong> ${getBookCategoryLabel(book.category)}</p>
-          ${book.description ? `<p class="book-description">${book.description}</p>` : ''}
-          <p class="book-date">Selesai: ${new Date(book.updatedAt).toLocaleDateString('id-ID')}</p>
+          <p><strong>Kategori:</strong> ${getBookCategoryLabel(
+            book.category
+          )}</p>
+          ${
+            book.description
+              ? `<p class="book-description">${book.description}</p>`
+              : ''
+          }
+          <p class="book-date">Selesai: ${new Date(
+            book.updatedAt
+          ).toLocaleDateString('id-ID')}</p>
         </div>
         <div class="book-actions">
           <button class="move-btn premium-action-btn" data-action="toggle">
@@ -1280,10 +1745,14 @@ function initializeBooksPage() {
           </button>
         </div>
       </div>
-    `).join('');
+    `
+          )
+          .join('');
 
   // Event delegation
-  document.querySelector('.bookshelf').addEventListener('click', handleBookAction);
+  document
+    .querySelector('.bookshelf')
+    .addEventListener('click', handleBookAction);
 
   // Add book
   const addBookBtn = document.getElementById('add-book');
@@ -1291,9 +1760,11 @@ function initializeBooksPage() {
     // Remove any existing event listeners
     const newBtn = addBookBtn.cloneNode(true);
     addBookBtn.parentNode.replaceChild(newBtn, addBookBtn);
-    
+
     // Add new event listener
-    document.getElementById('add-book').addEventListener('click', () => ModalManager.showBookModal());
+    document
+      .getElementById('add-book')
+      .addEventListener('click', () => ModalManager.showBookModal());
   }
 }
 
@@ -1402,12 +1873,22 @@ function deleteSession(id) {
 }
 
 function getCategoryLabel(cat) {
-  const map = { study: 'Studi', personal: 'Personal', work: 'Pekerjaan', other: 'Lainnya' };
+  const map = {
+    study: 'Studi',
+    personal: 'Personal',
+    work: 'Pekerjaan',
+    other: 'Lainnya',
+  };
   return map[cat] || cat;
 }
 
 function getBookCategoryLabel(cat) {
-  const map = { academic: 'Akademik', fiction: 'Fiksi', 'non-fiction': 'Non-Fiksi', reference: 'Referensi' };
+  const map = {
+    academic: 'Akademik',
+    fiction: 'Fiksi',
+    'non-fiction': 'Non-Fiksi',
+    reference: 'Referensi',
+  };
   return map[cat] || cat;
 }
 
@@ -1415,12 +1896,20 @@ function getBookCategoryLabel(cat) {
 function showToast(message, type = 'info') {
   const toastContainer = document.getElementById('toast-container');
   if (!toastContainer) return;
-  
+
   const toast = document.createElement('div');
   toast.className = `toast toast-${type} premium-toast`;
   toast.innerHTML = `
     <div class="toast-content">
-      <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-times-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i>
+      <i class="fas ${
+        type === 'success'
+          ? 'fa-check-circle'
+          : type === 'error'
+          ? 'fa-times-circle'
+          : type === 'warning'
+          ? 'fa-exclamation-triangle'
+          : 'fa-info-circle'
+      }"></i>
       <span>${message}</span>
     </div>
   `;
@@ -1480,13 +1969,13 @@ function updateActiveNav() {
 // Initialize offline manager
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('FocusMode Premium App Initialized');
-  
+
   // Setup offline manager
   await OfflineManager.initialize();
-  
+
   // Check auth
   checkAuth();
-  
+
   // Initialize notifications and schedule reminders
   await NotificationManager.requestPermission();
   const settings = NotificationManager.getSettings();
@@ -1494,7 +1983,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     NotificationManager.scheduleDailyReminder(8, 0);
   }
   console.log('Notification system initialized');
-  
+
   // Create initial backup
   setTimeout(() => {
     OfflineManager.backupData();
