@@ -73,16 +73,28 @@ let currentUser = null;
 
 // Check if user is logged in
 function checkAuth() {
-  const user = localStorage.getItem('currentUser');
-  const token = localStorage.getItem('authToken');
+  try {
+    const userStr = localStorage.getItem('currentUser');
+    const token = localStorage.getItem('authToken');
 
-  if (user) {
-    currentUser = JSON.parse(user);
-    if (token) {
-      authToken = token;
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user && user.id) {
+        currentUser = user;
+        if (token) {
+          authToken = token;
+        }
+        showMainApp();
+        return;
+      }
     }
-    showMainApp();
-  } else {
+    // No valid user found
+    showAuthPage();
+  } catch (error) {
+    console.error('Error checking auth:', error);
+    // Clear corrupted data
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('authToken');
     showAuthPage();
   }
 }
@@ -360,7 +372,9 @@ function showMainApp() {
     ).innerHTML = `<span class="avatar-initial premium-avatar">${currentUser.avatar}</span>`;
   }
 
-  loadPage();
+  if (!isLoadingPage) {
+    loadPage();
+  }
 
   const logoutBtn = document.getElementById('logout-btn');
   if (logoutBtn) {
@@ -377,36 +391,79 @@ function showMainApp() {
 // Data management with API integration
 const DataManager = {
   // Notes
-  async getNotes() {
+  async getNotes(category = 'all') {
     try {
-      if (authToken) {
-        return await apiCall('/notes');
+      if (authToken && currentUser) {
+        const query = category !== 'all' ? `?category=${category}` : '';
+        const notes = await apiCall(`/notes${query}`);
+        // Map database fields to frontend format
+        return notes.map(note => ({
+          id: note.id,
+          title: note.title,
+          content: note.content,
+          category: note.category,
+          createdAt: note.created_at || note.createdAt,
+          updatedAt: note.updated_at || note.updatedAt,
+        }));
       }
     } catch (error) {
       console.warn('API getNotes failed, using localStorage:', error.message);
     }
-    return JSON.parse(localStorage.getItem(`notes_${currentUser.id}`) || '[]');
+    // Fallback to localStorage
+    if (!currentUser || !currentUser.id) return [];
+    try {
+      const notes = JSON.parse(
+        localStorage.getItem(`notes_${currentUser.id}`) || '[]'
+      );
+      if (category === 'all') return notes;
+      return notes.filter(n => n.category === category);
+    } catch (e) {
+      console.error('Error parsing localStorage notes:', e);
+      return [];
+    }
   },
 
   async saveNote(note) {
     try {
-      if (authToken) {
+      if (authToken && currentUser) {
+        // Prepare data for API
+        const noteData = {
+          title: note.title,
+          content: note.content,
+          category: note.category || 'study',
+        };
+
         if (note.id) {
-          await apiCall(`/notes/${note.id}`, { method: 'PUT', body: note });
-          return note;
+          // Update existing note
+          await apiCall(`/notes/${note.id}`, { method: 'PUT', body: noteData });
+          console.log('✅ Note updated in database:', note.id);
+          return { ...note, ...noteData, updatedAt: new Date().toISOString() };
         } else {
+          // Create new note
           const result = await apiCall('/notes', {
             method: 'POST',
-            body: note,
+            body: noteData,
           });
-          return { ...note, id: result.id };
+          console.log('✅ Note created in database:', result.id);
+          return {
+            ...note,
+            ...noteData,
+            id: result.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
         }
       }
     } catch (error) {
-      console.warn('API saveNote failed, using localStorage:', error.message);
+      console.error('API saveNote failed:', error);
+      console.warn('Falling back to localStorage');
     }
 
     // Fallback to localStorage
+    if (!currentUser || !currentUser.id) {
+      throw new Error('User not logged in');
+    }
+
     const notes = JSON.parse(
       localStorage.getItem(`notes_${currentUser.id}`) || '[]'
     );
@@ -432,13 +489,16 @@ const DataManager = {
 
   async deleteNote(id) {
     try {
-      if (authToken) {
+      if (authToken && currentUser) {
         await apiCall(`/notes/${id}`, { method: 'DELETE' });
+        console.log('✅ Note deleted from database:', id);
         return;
       }
     } catch (error) {
       console.warn('API deleteNote failed, using localStorage:', error.message);
     }
+    // Fallback to localStorage
+    if (!currentUser || !currentUser.id) return;
     const notes = JSON.parse(
       localStorage.getItem(`notes_${currentUser.id}`) || '[]'
     ).filter(n => n.id !== id);
@@ -448,34 +508,79 @@ const DataManager = {
   // Books
   async getBooks() {
     try {
-      if (authToken) {
-        return await apiCall('/books');
+      if (authToken && currentUser) {
+        const books = await apiCall('/books');
+        // Map database fields to frontend format
+        return books.map(book => ({
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          description: book.description || '',
+          category: book.category,
+          isComplete: book.is_complete === 1 || book.is_complete === true,
+          createdAt: book.created_at || book.createdAt,
+          updatedAt: book.updated_at || book.updatedAt,
+        }));
       }
     } catch (error) {
       console.warn('API getBooks failed, using localStorage:', error.message);
     }
-    return JSON.parse(localStorage.getItem(`books_${currentUser.id}`) || '[]');
+    // Fallback to localStorage
+    if (!currentUser || !currentUser.id) return [];
+    try {
+      return JSON.parse(
+        localStorage.getItem(`books_${currentUser.id}`) || '[]'
+      );
+    } catch (e) {
+      console.error('Error parsing localStorage books:', e);
+      return [];
+    }
   },
 
   async saveBook(book) {
     try {
-      if (authToken) {
+      if (authToken && currentUser) {
+        // Prepare data for API (match database schema)
+        const bookData = {
+          title: book.title,
+          author: book.author,
+          description: book.description || '',
+          category: book.category || 'academic',
+          is_complete: book.isComplete || false,
+        };
+
         if (book.id) {
-          await apiCall(`/books/${book.id}`, { method: 'PUT', body: book });
-          return book;
+          // Update existing book
+          await apiCall(`/books/${book.id}`, { method: 'PUT', body: bookData });
+          console.log('✅ Book updated in database:', book.id);
+          return { ...book, ...bookData, updatedAt: new Date().toISOString() };
         } else {
+          // Create new book
           const result = await apiCall('/books', {
             method: 'POST',
-            body: book,
+            body: bookData,
           });
-          return { ...book, id: result.id };
+          console.log('✅ Book created in database:', result.id);
+          return {
+            ...book,
+            ...bookData,
+            id: result.id,
+            isComplete: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
         }
       }
     } catch (error) {
-      console.warn('API saveBook failed, using localStorage:', error.message);
+      console.error('API saveBook failed:', error);
+      console.warn('Falling back to localStorage');
     }
 
     // Fallback to localStorage
+    if (!currentUser || !currentUser.id) {
+      throw new Error('User not logged in');
+    }
+
     const books = JSON.parse(
       localStorage.getItem(`books_${currentUser.id}`) || '[]'
     );
@@ -502,13 +607,16 @@ const DataManager = {
 
   async deleteBook(id) {
     try {
-      if (authToken) {
+      if (authToken && currentUser) {
         await apiCall(`/books/${id}`, { method: 'DELETE' });
+        console.log('✅ Book deleted from database:', id);
         return;
       }
     } catch (error) {
       console.warn('API deleteBook failed, using localStorage:', error.message);
     }
+    // Fallback to localStorage
+    if (!currentUser || !currentUser.id) return;
     const books = JSON.parse(
       localStorage.getItem(`books_${currentUser.id}`) || '[]'
     ).filter(b => b.id !== id);
@@ -517,8 +625,9 @@ const DataManager = {
 
   async toggleBookStatus(id) {
     try {
-      if (authToken) {
+      if (authToken && currentUser) {
         await apiCall(`/books/${id}/toggle`, { method: 'POST' });
+        console.log('✅ Book status toggled in database:', id);
         return;
       }
     } catch (error) {
@@ -527,6 +636,8 @@ const DataManager = {
         error.message
       );
     }
+    // Fallback to localStorage
+    if (!currentUser || !currentUser.id) return;
     const books = JSON.parse(
       localStorage.getItem(`books_${currentUser.id}`) || '[]'
     );
@@ -541,8 +652,21 @@ const DataManager = {
   // Sessions
   async getSessions() {
     try {
-      if (authToken) {
-        return await apiCall('/sessions');
+      if (authToken && currentUser) {
+        const sessions = await apiCall('/sessions');
+        // Map database fields to frontend format
+        return sessions.map(session => ({
+          id: session.id,
+          title: session.title,
+          description: session.description || '',
+          subject: session.subject,
+          duration: session.duration,
+          status: session.status,
+          startedAt: session.started_at,
+          completedAt: session.completed_at,
+          createdAt: session.created_at,
+          updatedAt: session.updated_at,
+        }));
       }
     } catch (error) {
       console.warn(
@@ -550,35 +674,60 @@ const DataManager = {
         error.message
       );
     }
-    return JSON.parse(
-      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
-    );
+    // Fallback to localStorage
+    if (!currentUser || !currentUser.id) return [];
+    try {
+      return JSON.parse(
+        localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+      );
+    } catch (e) {
+      console.error('Error parsing localStorage sessions:', e);
+      return [];
+    }
   },
 
   async saveSession(session) {
     try {
       if (authToken) {
+        // Prepare data for API (match database schema)
+        const sessionData = {
+          title: session.title,
+          description: session.description || '',
+          subject: session.subject,
+          duration: parseInt(session.duration) || 25,
+          status: session.status || 'planned',
+        };
+
         if (session.id) {
+          // Update existing session
           await apiCall(`/sessions/${session.id}`, {
             method: 'PUT',
-            body: session,
+            body: sessionData,
           });
-          return session;
+          console.log('✅ Session updated in database:', session.id);
+          return { ...session, ...sessionData };
         } else {
+          // Create new session
           const result = await apiCall('/sessions', {
             method: 'POST',
-            body: session,
+            body: sessionData,
           });
-          return { ...session, id: result.id };
+          console.log('✅ Session created in database:', result.id);
+          return {
+            ...session,
+            ...sessionData,
+            id: result.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
         }
       }
     } catch (error) {
-      console.warn(
-        'API saveSession failed, using localStorage:',
-        error.message
-      );
+      console.error('API saveSession failed:', error);
+      console.warn('Falling back to localStorage');
     }
 
+    // Fallback to localStorage if API fails
     const sessions = JSON.parse(
       localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
     );
@@ -596,6 +745,7 @@ const DataManager = {
       session.createdAt = new Date().toISOString();
       session.updatedAt = session.createdAt;
       session.userId = currentUser.id;
+      session.status = session.status || 'planned';
       sessions.push(session);
     }
     localStorage.setItem(
@@ -605,10 +755,60 @@ const DataManager = {
     return session;
   },
 
+  async deleteSession(id) {
+    try {
+      if (authToken) {
+        await apiCall(`/sessions/${id}`, { method: 'DELETE' });
+        console.log('✅ Session deleted from database:', id);
+        return;
+      }
+    } catch (error) {
+      console.warn(
+        'API deleteSession failed, using localStorage:',
+        error.message
+      );
+    }
+    const sessions = JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    ).filter(s => s.id !== id);
+    localStorage.setItem(
+      `sessions_${currentUser.id}`,
+      JSON.stringify(sessions)
+    );
+  },
+
+  async startSession(id) {
+    try {
+      if (authToken) {
+        await apiCall(`/sessions/${id}/start`, { method: 'POST' });
+        console.log('✅ Session started in database:', id);
+        return;
+      }
+    } catch (error) {
+      console.warn(
+        'API startSession failed, using localStorage:',
+        error.message
+      );
+    }
+    const sessions = JSON.parse(
+      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+    );
+    const session = sessions.find(s => s.id === id);
+    if (session) {
+      session.status = 'inprogress';
+      session.startedAt = new Date().toISOString();
+      localStorage.setItem(
+        `sessions_${currentUser.id}`,
+        JSON.stringify(sessions)
+      );
+    }
+  },
+
   async completeSession(id) {
     try {
       if (authToken) {
         await apiCall(`/sessions/${id}/complete`, { method: 'POST' });
+        console.log('✅ Session completed in database:', id);
         return;
       }
     } catch (error) {
@@ -631,43 +831,176 @@ const DataManager = {
     }
   },
 
-  // Dashboard
+  // Dashboard & Stats
   async getDashboard() {
     try {
-      if (authToken) {
-        return await apiCall('/user/dashboard');
+      if (authToken && currentUser) {
+        const data = await apiCall('/user/dashboard');
+        console.log('📊 Dashboard data from API:', data);
+        return {
+          user: data.user,
+          dashboard: {
+            completed_sessions: data.dashboard?.completed_sessions || 0,
+            total_notes: data.dashboard?.total_notes || 0,
+            total_books: data.dashboard?.total_books || 0,
+            name: data.dashboard?.name,
+            email: data.dashboard?.email,
+          },
+          todayStats: {
+            total_minutes: parseInt(data.todayStats?.total_minutes) || 0,
+            total_sessions: parseInt(data.todayStats?.total_sessions) || 0,
+          },
+        };
       }
     } catch (error) {
       console.warn('API getDashboard failed:', error.message);
     }
-    // Return local stats
+    // Fallback: Return local stats
+    if (!currentUser || !currentUser.id) {
+      return { dashboard: {}, todayStats: {} };
+    }
+
+    try {
+      const sessions = JSON.parse(
+        localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
+      );
+      const notes = JSON.parse(
+        localStorage.getItem(`notes_${currentUser.id}`) || '[]'
+      );
+      const books = JSON.parse(
+        localStorage.getItem(`books_${currentUser.id}`) || '[]'
+      );
+
+      const completedSessions = sessions.filter(s => s.status === 'completed');
+      const totalMinutes = completedSessions.reduce(
+        (sum, s) => sum + (s.duration || 0),
+        0
+      );
+
+      return {
+        dashboard: {
+          completed_sessions: completedSessions.length,
+          total_notes: notes.length,
+          total_books: books.length,
+        },
+        todayStats: {
+          total_minutes: totalMinutes,
+          total_sessions: completedSessions.length,
+        },
+      };
+    } catch (e) {
+      console.error('Error getting local stats:', e);
+      return { dashboard: {}, todayStats: {} };
+    }
+  },
+
+  // Weekly Stats
+  async getWeeklyStats() {
+    try {
+      if (authToken && currentUser) {
+        const data = await apiCall('/stats/weekly');
+        console.log('📊 Weekly stats from API:', data);
+        return data;
+      }
+    } catch (error) {
+      console.warn('API getWeeklyStats failed:', error.message);
+    }
+    // Fallback to empty
+    return [];
+  },
+
+  // Today Stats
+  async getTodayStats() {
+    try {
+      if (authToken && currentUser) {
+        const data = await apiCall('/stats/today');
+        return {
+          total_minutes: parseInt(data.total_minutes) || 0,
+          total_sessions: parseInt(data.total_sessions) || 0,
+        };
+      }
+    } catch (error) {
+      console.warn('API getTodayStats failed:', error.message);
+    }
+    // Fallback to local calculation
+    if (!currentUser || !currentUser.id) {
+      return { total_minutes: 0, total_sessions: 0 };
+    }
+
     const sessions = JSON.parse(
       localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
     );
-    const notes = JSON.parse(
-      localStorage.getItem(`notes_${currentUser.id}`) || '[]'
-    );
-    const books = JSON.parse(
-      localStorage.getItem(`books_${currentUser.id}`) || '[]'
-    );
-
-    const completedSessions = sessions.filter(s => s.status === 'completed');
-    const totalMinutes = completedSessions.reduce(
-      (sum, s) => sum + (s.duration || 0),
-      0
+    const today = new Date().toDateString();
+    const todaySessions = sessions.filter(
+      s =>
+        s.status === 'completed' &&
+        new Date(s.completedAt || s.createdAt).toDateString() === today
     );
 
     return {
-      dashboard: {
-        completed_sessions: completedSessions.length,
-        total_notes: notes.length,
-        total_books: books.length,
-      },
-      todayStats: {
-        total_minutes: totalMinutes,
-        total_sessions: completedSessions.length,
-      },
+      total_minutes: todaySessions.reduce(
+        (sum, s) => sum + (s.duration || 0),
+        0
+      ),
+      total_sessions: todaySessions.length,
     };
+  },
+
+  // Get current streak
+  async getStreak() {
+    try {
+      if (authToken && currentUser) {
+        const data = await apiCall('/stats/streak');
+        return data.streak_days || 0;
+      }
+    } catch (error) {
+      console.warn('API getStreak failed:', error.message);
+    }
+    return 0; // Fallback
+  },
+
+  // Get stats summary (all stats in one call)
+  async getStatsSummary() {
+    try {
+      if (authToken && currentUser) {
+        const data = await apiCall('/stats/summary');
+        console.log('📊 Stats summary from API:', data);
+        return data;
+      }
+    } catch (error) {
+      console.warn('API getStatsSummary failed:', error.message);
+    }
+    // Fallback to individual calls
+    const dashboard = await this.getDashboard();
+    const weekly = await this.getWeeklyStats();
+    return {
+      ...dashboard,
+      weekly: {
+        total_minutes: weekly.reduce(
+          (sum, d) => sum + (d.total_minutes || 0),
+          0
+        ),
+        total_sessions: weekly.reduce(
+          (sum, d) => sum + (d.sessions_count || 0),
+          0
+        ),
+        daily_breakdown: weekly,
+      },
+      streak: 0,
+    };
+  },
+
+  // Get monthly stats
+  async getMonthlyStats() {
+    try {
+      if (authToken && currentUser) {
+        const data = await apiCall('/stats/monthly');
+        return data;
+      }
+    } catch (error) {
+      console.warn('API getMonthlyStats failed:', error.message);
+    }
+    return [];
   },
 };
 
@@ -775,9 +1108,17 @@ const TimerManager = {
     }
   },
 
-  timerComplete() {
+  async timerComplete() {
     clearInterval(timerInterval);
     isTimerRunning = false;
+
+    // Get the duration that was completed
+    const completedDuration =
+      currentTimerType === 'pomodoro'
+        ? 25
+        : currentTimerType === 'short-break'
+        ? 5
+        : 15;
 
     // Show notification
     showToast('Timer selesai!', 'success');
@@ -792,6 +1133,32 @@ const TimerManager = {
 
     if (startBtn) startBtn.disabled = false;
     if (pauseBtn) pauseBtn.disabled = true;
+
+    // Sync stats to database if logged in (only for pomodoro sessions)
+    if (currentTimerType === 'pomodoro' && authToken && currentUser) {
+      try {
+        // Save timer to database
+        const response = await apiCall('/timers', {
+          method: 'POST',
+          body: JSON.stringify({
+            timer_type: currentTimerType,
+            duration: completedDuration,
+            task_description: 'Pomodoro Focus Session',
+          }),
+        });
+
+        if (response && response.id) {
+          // Complete the timer which will also update stats
+          await apiCall(`/timers/${response.id}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({ duration: completedDuration }),
+          });
+          console.log('📊 Timer stats synced to database');
+        }
+      } catch (error) {
+        console.warn('Failed to sync timer stats:', error.message);
+      }
+    }
 
     // Auto-start break if it was a pomodoro session
     if (currentTimerType === 'pomodoro') {
@@ -809,72 +1176,26 @@ const TimerManager = {
   },
 };
 
-// Session Manager
+// Session Manager - Updated to use API
 const SessionManager = {
-  getSessions() {
-    return JSON.parse(
-      localStorage.getItem(`sessions_${currentUser.id}`) || '[]'
-    );
+  async getSessions() {
+    return await DataManager.getSessions();
   },
 
-  saveSession(session) {
-    const sessions = this.getSessions();
-    if (session.id) {
-      const index = sessions.findIndex(s => s.id === session.id);
-      if (index !== -1) {
-        sessions[index] = {
-          ...sessions[index],
-          ...session,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-    } else {
-      session.id = Date.now();
-      session.createdAt = new Date().toISOString();
-      session.updatedAt = session.createdAt;
-      session.userId = currentUser.id;
-      session.status = 'planned';
-      sessions.push(session);
-    }
-    localStorage.setItem(
-      `sessions_${currentUser.id}`,
-      JSON.stringify(sessions)
-    );
-    return session;
+  async saveSession(session) {
+    return await DataManager.saveSession(session);
   },
 
-  deleteSession(id) {
-    const sessions = this.getSessions().filter(s => s.id !== id);
-    localStorage.setItem(
-      `sessions_${currentUser.id}`,
-      JSON.stringify(sessions)
-    );
+  async deleteSession(id) {
+    await DataManager.deleteSession(id);
   },
 
-  startSession(id) {
-    const sessions = this.getSessions();
-    const session = sessions.find(s => s.id === id);
-    if (session) {
-      session.status = 'inprogress';
-      session.startedAt = new Date().toISOString();
-      localStorage.setItem(
-        `sessions_${currentUser.id}`,
-        JSON.stringify(sessions)
-      );
-    }
+  async startSession(id) {
+    await DataManager.startSession(id);
   },
 
-  completeSession(id) {
-    const sessions = this.getSessions();
-    const session = sessions.find(s => s.id === id);
-    if (session) {
-      session.status = 'completed';
-      session.completedAt = new Date().toISOString();
-      localStorage.setItem(
-        `sessions_${currentUser.id}`,
-        JSON.stringify(sessions)
-      );
-    }
+  async completeSession(id) {
+    await DataManager.completeSession(id);
   },
 };
 
@@ -962,7 +1283,7 @@ const ModalManager = {
     modal
       .querySelector('#cancelNote')
       .addEventListener('click', () => modal.remove());
-    modal.querySelector('#noteForm').addEventListener('submit', e => {
+    modal.querySelector('#noteForm').addEventListener('submit', async e => {
       e.preventDefault();
       const data = {
         title: document.getElementById('noteTitle').value.trim(),
@@ -970,13 +1291,19 @@ const ModalManager = {
         category: document.getElementById('noteCategory').value,
       };
       if (isEdit) data.id = note.id;
-      DataManager.saveNote(data);
-      modal.remove();
-      showToast(
-        isEdit ? 'Catatan diperbarui!' : 'Catatan ditambahkan!',
-        'success'
-      );
-      loadPage();
+
+      try {
+        await DataManager.saveNote(data);
+        modal.remove();
+        showToast(
+          isEdit ? 'Catatan diperbarui!' : 'Catatan ditambahkan!',
+          'success'
+        );
+        await reloadNotesPage();
+      } catch (error) {
+        console.error('Error saving note:', error);
+        showToast('Gagal menyimpan catatan', 'error');
+      }
     });
   },
 
@@ -1033,7 +1360,7 @@ const ModalManager = {
     modal
       .querySelector('#cancelBook')
       .addEventListener('click', () => modal.remove());
-    modal.querySelector('#bookForm').addEventListener('submit', e => {
+    modal.querySelector('#bookForm').addEventListener('submit', async e => {
       e.preventDefault();
       const data = {
         title: document.getElementById('bookTitle').value.trim(),
@@ -1041,11 +1368,20 @@ const ModalManager = {
         description: document.getElementById('bookDescription').value.trim(),
         category: document.getElementById('bookCategory').value,
       };
-      if (isEdit) data.id = book.id;
-      DataManager.saveBook(data);
-      modal.remove();
-      showToast(isEdit ? 'Buku diperbarui!' : 'Buku ditambahkan!', 'success');
-      loadPage();
+      if (isEdit) {
+        data.id = book.id;
+        data.isComplete = book.isComplete;
+      }
+
+      try {
+        await DataManager.saveBook(data);
+        modal.remove();
+        showToast(isEdit ? 'Buku diperbarui!' : 'Buku ditambahkan!', 'success');
+        await reloadBooksPage();
+      } catch (error) {
+        console.error('Error saving book:', error);
+        showToast('Gagal menyimpan buku', 'error');
+      }
     });
   },
 
@@ -1095,19 +1431,26 @@ const ModalManager = {
     modal
       .querySelector('#cancelSession')
       .addEventListener('click', () => modal.remove());
-    modal.querySelector('#sessionForm').addEventListener('submit', e => {
+    modal.querySelector('#sessionForm').addEventListener('submit', async e => {
       e.preventDefault();
       const data = {
         title: document.getElementById('sessionTitle').value.trim(),
         description: document.getElementById('sessionDescription').value.trim(),
         duration: parseInt(document.getElementById('sessionDuration').value),
         subject: document.getElementById('sessionSubject').value.trim(),
+        status: session?.status || 'planned',
       };
       if (isEdit) data.id = session.id;
-      SessionManager.saveSession(data);
-      modal.remove();
-      showToast(isEdit ? 'Sesi diperbarui!' : 'Sesi ditambahkan!', 'success');
-      loadPage();
+
+      try {
+        await SessionManager.saveSession(data);
+        modal.remove();
+        showToast(isEdit ? 'Sesi diperbarui!' : 'Sesi ditambahkan!', 'success');
+        await reloadSessionsPage();
+      } catch (error) {
+        console.error('Error saving session:', error);
+        showToast('Gagal menyimpan sesi', 'error');
+      }
     });
   },
 };
@@ -1225,31 +1568,58 @@ function initializeNotificationSettings() {
 }
 
 // Routing & Page Rendering
-function loadPage() {
-  const hash = window.location.hash.slice(2) || 'beranda';
-  const mainContent = document.getElementById('main-content');
+let isLoadingPage = false;
+async function loadPage() {
+  // Prevent multiple simultaneous page loads
+  if (isLoadingPage) {
+    console.log('Page already loading, skipping...');
+    return;
+  }
 
-  const pages = {
-    beranda: renderHomePage(),
-    fitur: renderFeaturesPage(),
-    'focus-mode': renderFocusModePage(),
-    'sesi-belajar': renderSessionsPage(),
-    catatan: renderNotesPage(),
-    'rak-buku': renderBooksPage(),
-    'pengaturan-notifikasi': renderNotificationSettings(),
-  };
+  isLoadingPage = true;
 
-  mainContent.innerHTML = pages[hash] || pages.beranda;
+  try {
+    const hash = window.location.hash.slice(2) || 'beranda';
+    const mainContent = document.getElementById('main-content');
 
-  // Initialize specific page functionality
-  if (hash === 'focus-mode') initializeFocusModePage();
-  if (hash === 'sesi-belajar') initializeSessionsPage();
-  if (hash === 'catatan') initializeNotesPage();
-  if (hash === 'rak-buku') initializeBooksPage();
-  if (hash === 'pengaturan-notifikasi') initializeNotificationSettings();
+    if (!mainContent) {
+      console.error('Main content element not found');
+      return;
+    }
 
-  injectComponentStyles();
-  updateActiveNav();
+    const pages = {
+      beranda: renderHomePage(),
+      fitur: renderFeaturesPage(),
+      'focus-mode': renderFocusModePage(),
+      'sesi-belajar': renderSessionsPage(),
+      catatan: renderNotesPage(),
+      'rak-buku': renderBooksPage(),
+      'pengaturan-notifikasi': renderNotificationSettings(),
+    };
+
+    mainContent.innerHTML = pages[hash] || pages.beranda;
+
+    // Initialize specific page functionality
+    try {
+      if (hash === 'beranda' || hash === '') await initializeHomePage();
+      if (hash === 'focus-mode') initializeFocusModePage();
+      if (hash === 'sesi-belajar') await initializeSessionsPage();
+      if (hash === 'catatan') await initializeNotesPage();
+      if (hash === 'rak-buku') await initializeBooksPage();
+      if (hash === 'pengaturan-notifikasi') initializeNotificationSettings();
+    } catch (error) {
+      console.error('Error initializing page:', error);
+      showToast('Terjadi kesalahan saat memuat halaman', 'error');
+    }
+
+    injectComponentStyles();
+    updateActiveNav();
+  } catch (error) {
+    console.error('Error loading page:', error);
+    showToast('Gagal memuat halaman', 'error');
+  } finally {
+    isLoadingPage = false;
+  }
 }
 
 // Render functions - Enhanced with premium styling
@@ -1262,6 +1632,66 @@ function renderHomePage() {
         <div class="hero-actions">
           <a href="#/focus-mode" class="btn premium-btn">Mulai Fokus</a>
           <a href="#/fitur" class="btn premium-btn-secondary">Pelajari Fitur</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats-overview premium-stats">
+      <div class="container">
+        <h2 class="text-center premium-section-title">Statistik Belajar Anda</h2>
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card premium-card">
+            <div class="stat-icon">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="stat-total-minutes">-</h3>
+              <p>Menit Belajar Hari Ini</p>
+            </div>
+          </div>
+          <div class="stat-card premium-card">
+            <div class="stat-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="stat-completed-sessions">-</h3>
+              <p>Sesi Selesai</p>
+            </div>
+          </div>
+          <div class="stat-card premium-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #fd79a8, #e84393);">
+              <i class="fas fa-fire"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="stat-streak">-</h3>
+              <p>Streak Hari</p>
+            </div>
+          </div>
+          <div class="stat-card premium-card">
+            <div class="stat-icon">
+              <i class="fas fa-sticky-note"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="stat-total-notes">-</h3>
+              <p>Total Catatan</p>
+            </div>
+          </div>
+          <div class="stat-card premium-card">
+            <div class="stat-icon">
+              <i class="fas fa-book"></i>
+            </div>
+            <div class="stat-info">
+              <h3 id="stat-total-books">-</h3>
+              <p>Total Buku</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="weekly-stats-container" style="margin-top: 2rem;">
+          <h3 class="text-center" style="margin-bottom: 1rem;">Aktivitas 7 Hari Terakhir</h3>
+          <div class="weekly-chart" id="weekly-chart">
+            <div class="chart-loading">Memuat data...</div>
+          </div>
         </div>
       </div>
     </section>
@@ -1293,6 +1723,179 @@ function renderHomePage() {
         </div>
       </div>
     </section>
+  `;
+}
+
+// Initialize Home Page with Stats
+async function initializeHomePage() {
+  try {
+    // Check if user is logged in
+    if (!currentUser || !authToken) {
+      // Show default values for non-logged in users
+      const statsElements = [
+        'stat-total-minutes',
+        'stat-completed-sessions',
+        'stat-streak',
+        'stat-total-notes',
+        'stat-total-books',
+      ];
+      statsElements.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '0';
+      });
+
+      // Show login prompt in chart
+      const chartContainer = document.getElementById('weekly-chart');
+      if (chartContainer) {
+        chartContainer.innerHTML = `
+          <div style="text-align: center; padding: 2rem; color: #666;">
+            <i class="fas fa-sign-in-alt" style="font-size: 2rem; margin-bottom: 1rem; color: var(--primary);"></i>
+            <p>Login untuk melihat statistik belajar Anda</p>
+            <a href="#/login" class="btn premium-btn" style="margin-top: 1rem;">Login Sekarang</a>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Load stats summary (combines dashboard + weekly + streak in one call)
+    const statsSummary = await DataManager.getStatsSummary();
+
+    // Update stats display
+    const totalMinutesEl = document.getElementById('stat-total-minutes');
+    const completedSessionsEl = document.getElementById(
+      'stat-completed-sessions'
+    );
+    const streakEl = document.getElementById('stat-streak');
+    const totalNotesEl = document.getElementById('stat-total-notes');
+    const totalBooksEl = document.getElementById('stat-total-books');
+
+    if (totalMinutesEl) {
+      totalMinutesEl.textContent = `${
+        statsSummary.today?.total_minutes ||
+        statsSummary.todayStats?.total_minutes ||
+        0
+      } menit`;
+    }
+    if (completedSessionsEl) {
+      completedSessionsEl.textContent =
+        statsSummary.overview?.completed_sessions ||
+        statsSummary.dashboard?.completed_sessions ||
+        0;
+    }
+    if (streakEl) {
+      streakEl.textContent = statsSummary.streak || 0;
+    }
+    if (totalNotesEl) {
+      totalNotesEl.textContent =
+        statsSummary.overview?.total_notes ||
+        statsSummary.dashboard?.total_notes ||
+        0;
+    }
+    if (totalBooksEl) {
+      totalBooksEl.textContent =
+        statsSummary.overview?.total_books ||
+        statsSummary.dashboard?.total_books ||
+        0;
+    }
+
+    // Load weekly stats for chart
+    const weeklyData =
+      statsSummary.weekly?.daily_breakdown ||
+      (await DataManager.getWeeklyStats());
+    renderWeeklyChart(weeklyData);
+
+    console.log('📊 Home page stats loaded:', statsSummary);
+  } catch (error) {
+    console.error('Error initializing home page:', error);
+  }
+}
+
+// Render Weekly Chart
+function renderWeeklyChart(weeklyData) {
+  const chartContainer = document.getElementById('weekly-chart');
+  if (!chartContainer) return;
+
+  // Get last 7 days
+  const days = [];
+  const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    days.push({
+      date: date.toISOString().split('T')[0],
+      dayName: dayNames[date.getDay()],
+      dateStr: date.getDate(),
+    });
+  }
+
+  // Map weekly data to days
+  const dataMap = {};
+  if (weeklyData && Array.isArray(weeklyData)) {
+    weeklyData.forEach(item => {
+      const dateKey = new Date(item.study_date).toISOString().split('T')[0];
+      dataMap[dateKey] = {
+        sessions: item.sessions_count || 0,
+        minutes: item.total_minutes || 0,
+      };
+    });
+  }
+
+  // Find max value for scaling
+  const maxMinutes = Math.max(
+    ...days.map(d => dataMap[d.date]?.minutes || 0),
+    60
+  );
+
+  chartContainer.innerHTML = `
+    <div class="chart-bars" style="display: flex; justify-content: space-around; align-items: flex-end; height: 150px; padding: 10px 0;">
+      ${days
+        .map(day => {
+          const data = dataMap[day.date] || { sessions: 0, minutes: 0 };
+          const height = maxMinutes > 0 ? (data.minutes / maxMinutes) * 100 : 0;
+          const isToday = day.date === new Date().toISOString().split('T')[0];
+
+          return `
+          <div class="chart-bar-container" style="display: flex; flex-direction: column; align-items: center; flex: 1;">
+            <div class="chart-value" style="font-size: 0.75rem; color: var(--primary); margin-bottom: 4px;">
+              ${data.minutes > 0 ? data.minutes + 'm' : ''}
+            </div>
+            <div class="chart-bar" style="
+              width: 30px;
+              height: ${Math.max(height, 5)}%;
+              min-height: 4px;
+              background: ${
+                isToday
+                  ? 'linear-gradient(135deg, #0984e3, #74b9ff)'
+                  : 'linear-gradient(135deg, #74b9ff, #a29bfe)'
+              };
+              border-radius: 4px 4px 0 0;
+              transition: height 0.3s ease;
+            " title="${data.sessions} sesi, ${data.minutes} menit"></div>
+            <div class="chart-label" style="margin-top: 8px; font-size: 0.75rem; color: ${
+              isToday ? 'var(--primary)' : '#666'
+            }; font-weight: ${isToday ? '600' : '400'};">
+              ${day.dayName}
+            </div>
+            <div class="chart-date" style="font-size: 0.65rem; color: #999;">
+              ${day.dateStr}
+            </div>
+          </div>
+        `;
+        })
+        .join('')}
+    </div>
+    <div class="chart-summary" style="text-align: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee;">
+      <p style="color: #666; font-size: 0.9rem;">
+        Total minggu ini: <strong style="color: var(--primary);">${
+          weeklyData?.reduce((sum, d) => sum + (d.total_minutes || 0), 0) || 0
+        } menit</strong> 
+        dalam <strong style="color: var(--primary);">${
+          weeklyData?.reduce((sum, d) => sum + (d.sessions_count || 0), 0) || 0
+        } sesi</strong>
+      </p>
+    </div>
   `;
 }
 
@@ -1496,24 +2099,34 @@ function initializeFocusModePage() {
 }
 
 // Initialize Sessions Page - FIXED VERSION
-function initializeSessionsPage() {
+let sessionsPageInitialized = false;
+async function initializeSessionsPage() {
   const sessionList = document.getElementById('session-list');
   if (!sessionList) return;
 
-  const sessions = SessionManager.getSessions();
+  // Prevent multiple simultaneous initializations
+  if (sessionsPageInitialized) {
+    console.log('Sessions page already initializing, skipping...');
+    return;
+  }
 
-  if (sessions.length === 0) {
-    sessionList.innerHTML = `
+  sessionsPageInitialized = true;
+
+  try {
+    const sessions = await SessionManager.getSessions();
+
+    if (sessions.length === 0) {
+      sessionList.innerHTML = `
       <div class="empty-state premium-empty-state" style="grid-column: 1 / -1;">
         <i class="fas fa-calendar-plus"></i>
         <h3>Belum Ada Sesi</h3>
         <p>Mulai dengan menambahkan sesi belajar pertama Anda</p>
       </div>
     `;
-  } else {
-    sessionList.innerHTML = sessions
-      .map(
-        session => `
+    } else {
+      sessionList.innerHTML = sessions
+        .map(
+          session => `
       <div class="session-card premium-card" data-session-id="${session.id}">
         <div class="session-header">
           <h3>${session.title}</h3>
@@ -1532,7 +2145,7 @@ function initializeSessionsPage() {
           <p><strong>Durasi:</strong> ${session.duration} menit</p>
           <p><strong>Deskripsi:</strong> ${session.description || '-'}</p>
           <p><strong>Dibuat:</strong> ${new Date(
-            session.createdAt
+            session.createdAt || session.created_at
           ).toLocaleDateString('id-ID')}</p>
         </div>
         <div class="session-actions">
@@ -1560,58 +2173,85 @@ function initializeSessionsPage() {
         </div>
       </div>
     `
-      )
-      .join('');
+        )
+        .join('');
+    }
+
+    // Remove old event listeners and add new one (event delegation)
+    const newSessionList = sessionList.cloneNode(true);
+    sessionList.parentNode.replaceChild(newSessionList, sessionList);
 
     // Event delegation untuk session actions
-    sessionList.addEventListener('click', handleSessionAction);
-  }
+    document
+      .getElementById('session-list')
+      .addEventListener('click', handleSessionAction);
 
-  // FIXED: Event listener untuk tombol tambah sesi
-  const addSessionBtn = document.getElementById('add-session');
-  if (addSessionBtn) {
-    // Remove any existing event listeners
-    const newBtn = addSessionBtn.cloneNode(true);
-    addSessionBtn.parentNode.replaceChild(newBtn, addSessionBtn);
+    // FIXED: Event listener untuk tombol tambah sesi
+    const addSessionBtn = document.getElementById('add-session');
+    if (addSessionBtn) {
+      // Remove any existing event listeners
+      const newBtn = addSessionBtn.cloneNode(true);
+      addSessionBtn.parentNode.replaceChild(newBtn, addSessionBtn);
 
-    // Add new event listener
-    document.getElementById('add-session').addEventListener('click', () => {
-      ModalManager.showSessionModal();
-    });
+      // Add new event listener
+      document.getElementById('add-session').addEventListener('click', () => {
+        ModalManager.showSessionModal();
+      });
+    }
+  } catch (error) {
+    console.error('Error initializing sessions page:', error);
+    const sessionListElement = document.getElementById('session-list');
+    if (sessionListElement) {
+      sessionListElement.innerHTML = `
+        <div class="empty-state premium-empty-state" style="grid-column: 1 / -1;">
+          <i class="fas fa-exclamation-triangle"></i>
+          <h3>Gagal Memuat Sesi</h3>
+          <p>Terjadi kesalahan saat memuat data: ${error.message}</p>
+          <button onclick="location.reload()" class="btn premium-btn" style="margin-top: 1rem;">Refresh Halaman</button>
+        </div>
+      `;
+    }
+  } finally {
+    sessionsPageInitialized = false;
   }
 }
 
-// Initialize Notes Page - FIXED VERSION
-function initializeNotesPage() {
+// Helper function to reload sessions page
+async function reloadSessionsPage() {
+  if (window.location.hash.slice(2) === 'sesi-belajar') {
+    await initializeSessionsPage();
+  }
+}
+
+// Initialize Notes Page - ASYNC VERSION
+let notesPageInitialized = false;
+async function initializeNotesPage() {
   const notesGrid = document.querySelector('.notes-grid');
   if (!notesGrid) return;
 
-  const notes = DataManager.getNotes();
-  const filter =
-    document.getElementById('note-category-filter')?.value || 'all';
+  // Prevent multiple simultaneous initializations
+  if (notesPageInitialized) {
+    console.log('Notes page already initializing, skipping...');
+    return;
+  }
 
-  if (notes.length === 0) {
-    notesGrid.innerHTML = `
+  notesPageInitialized = true;
+
+  try {
+    const filter =
+      document.getElementById('note-category-filter')?.value || 'all';
+    const notes = await DataManager.getNotes(filter);
+
+    if (notes.length === 0) {
+      notesGrid.innerHTML = `
       <div class="empty-state premium-empty-state" style="grid-column: 1 / -1;">
         <i class="fas fa-sticky-note"></i>
         <h3>Belum Ada Catatan</h3>
         <p>Mulai dengan menambahkan catatan pertama Anda</p>
       </div>
     `;
-  } else {
-    const filteredNotes =
-      filter === 'all' ? notes : notes.filter(note => note.category === filter);
-
-    if (filteredNotes.length === 0) {
-      notesGrid.innerHTML = `
-        <div class="empty-state premium-empty-state" style="grid-column: 1 / -1;">
-          <i class="fas fa-search"></i>
-          <h3>Tidak Ada Catatan di Kategori Ini</h3>
-          <p>Coba pilih kategori lain atau tambahkan catatan baru</p>
-        </div>
-      `;
     } else {
-      notesGrid.innerHTML = filteredNotes
+      notesGrid.innerHTML = notes
         .map(
           note => `
         <div class="note-card premium-card" data-note-id="${note.id}">
@@ -1621,9 +2261,9 @@ function initializeNotesPage() {
             note.category
           )}</span>
           </div>
-          <div class="note-date">${new Date(note.createdAt).toLocaleDateString(
-            'id-ID'
-          )}</div>
+          <div class="note-date">${new Date(
+            note.createdAt || note.created_at
+          ).toLocaleDateString('id-ID')}</div>
           <div class="note-body">${note.content}</div>
           <div class="note-actions">
             <button class="action-btn edit-btn premium-action-btn" data-action="edit">
@@ -1637,134 +2277,204 @@ function initializeNotesPage() {
       `
         )
         .join('');
-
-      // Event delegation
-      notesGrid.addEventListener('click', handleNoteAction);
     }
-  }
 
-  // Filter
-  const filterSelect = document.getElementById('note-category-filter');
-  if (filterSelect) {
-    filterSelect.addEventListener('change', initializeNotesPage);
-  }
+    // Remove old event listeners and add new one (event delegation)
+    const newNotesGrid = notesGrid.cloneNode(true);
+    notesGrid.parentNode.replaceChild(newNotesGrid, notesGrid);
 
-  // FIXED: Event listener untuk tombol tambah catatan
-  const addNoteBtn = document.getElementById('add-note');
-  if (addNoteBtn) {
-    // Remove any existing event listeners
-    const newBtn = addNoteBtn.cloneNode(true);
-    addNoteBtn.parentNode.replaceChild(newBtn, addNoteBtn);
+    // Event delegation untuk note actions
+    document
+      .querySelector('.notes-grid')
+      .addEventListener('click', handleNoteAction);
 
-    // Add new event listener
-    document.getElementById('add-note').addEventListener('click', () => {
-      ModalManager.showNoteModal();
-    });
+    // Filter - remove old listener and add new
+    const filterSelect = document.getElementById('note-category-filter');
+    if (filterSelect) {
+      const newFilterSelect = filterSelect.cloneNode(true);
+      filterSelect.parentNode.replaceChild(newFilterSelect, filterSelect);
+      document
+        .getElementById('note-category-filter')
+        .addEventListener('change', async () => {
+          notesPageInitialized = false;
+          await initializeNotesPage();
+        });
+    }
+
+    // FIXED: Event listener untuk tombol tambah catatan
+    const addNoteBtn = document.getElementById('add-note');
+    if (addNoteBtn) {
+      // Remove any existing event listeners
+      const newBtn = addNoteBtn.cloneNode(true);
+      addNoteBtn.parentNode.replaceChild(newBtn, addNoteBtn);
+
+      // Add new event listener
+      document.getElementById('add-note').addEventListener('click', () => {
+        ModalManager.showNoteModal();
+      });
+    }
+  } catch (error) {
+    console.error('Error initializing notes page:', error);
+    const notesGridElement = document.querySelector('.notes-grid');
+    if (notesGridElement) {
+      notesGridElement.innerHTML = `
+        <div class="empty-state premium-empty-state" style="grid-column: 1 / -1;">
+          <i class="fas fa-exclamation-triangle"></i>
+          <h3>Gagal Memuat Catatan</h3>
+          <p>Terjadi kesalahan saat memuat data: ${error.message}</p>
+          <button onclick="location.reload()" class="btn premium-btn" style="margin-top: 1rem;">Refresh Halaman</button>
+        </div>
+      `;
+    }
+  } finally {
+    notesPageInitialized = false;
   }
 }
 
-// Initialize Books Page
-function initializeBooksPage() {
+// Helper function to reload notes page
+async function reloadNotesPage() {
+  if (window.location.hash.slice(2) === 'catatan') {
+    await initializeNotesPage();
+  }
+}
+
+// Initialize Books Page - ASYNC VERSION
+let booksPageInitialized = false;
+async function initializeBooksPage() {
   const readingContainer = document.getElementById('reading-books');
   const completedContainer = document.getElementById('completed-books');
   if (!readingContainer || !completedContainer) return;
 
-  const books = DataManager.getBooks();
-  const readingBooks = books.filter(book => !book.isComplete);
-  const completedBooks = books.filter(book => book.isComplete);
+  // Prevent multiple simultaneous initializations
+  if (booksPageInitialized) {
+    console.log('Books page already initializing, skipping...');
+    return;
+  }
 
-  readingContainer.innerHTML =
-    readingBooks.length === 0
-      ? '<p class="empty-state premium-empty-state">Belum ada buku yang sedang dibaca</p>'
-      : readingBooks
-          .map(
-            book => `
-      <div class="book-card premium-card" data-book-id="${book.id}">
-        <div class="book-info">
-          <h4>${book.title}</h4>
-          <p><strong>Penulis:</strong> ${book.author}</p>
-          <p><strong>Kategori:</strong> ${getBookCategoryLabel(
-            book.category
-          )}</p>
-          ${
-            book.description
-              ? `<p class="book-description">${book.description}</p>`
-              : ''
-          }
-          <p class="book-date">Ditambahkan: ${new Date(
-            book.createdAt
-          ).toLocaleDateString('id-ID')}</p>
+  booksPageInitialized = true;
+
+  try {
+    const books = await DataManager.getBooks();
+    const readingBooks = books.filter(book => !book.isComplete);
+    const completedBooks = books.filter(book => book.isComplete);
+
+    readingContainer.innerHTML =
+      readingBooks.length === 0
+        ? '<p class="empty-state premium-empty-state">Belum ada buku yang sedang dibaca</p>'
+        : readingBooks
+            .map(
+              book => `
+        <div class="book-card premium-card" data-book-id="${book.id}">
+          <div class="book-info">
+            <h4>${book.title}</h4>
+            <p><strong>Penulis:</strong> ${book.author}</p>
+            <p><strong>Kategori:</strong> ${getBookCategoryLabel(
+              book.category
+            )}</p>
+            ${
+              book.description
+                ? `<p class="book-description">${book.description}</p>`
+                : ''
+            }
+            <p class="book-date">Ditambahkan: ${new Date(
+              book.createdAt || book.created_at
+            ).toLocaleDateString('id-ID')}</p>
+          </div>
+          <div class="book-actions">
+            <button class="move-btn premium-action-btn" data-action="toggle">
+              <i class="fas fa-check"></i> Tandai Selesai
+            </button>
+            <button class="action-btn edit-btn premium-action-btn" data-action="edit">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="action-btn delete-btn premium-action-btn" data-action="delete">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
         </div>
-        <div class="book-actions">
-          <button class="move-btn premium-action-btn" data-action="toggle">
-            <i class="fas fa-check"></i> Tandai Selesai
-          </button>
-          <button class="action-btn edit-btn premium-action-btn" data-action="edit">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="action-btn delete-btn premium-action-btn" data-action="delete">
-            <i class="fas fa-trash"></i>
-          </button>
+      `
+            )
+            .join('');
+
+    completedContainer.innerHTML =
+      completedBooks.length === 0
+        ? '<p class="empty-state premium-empty-state">Belum ada buku yang selesai dibaca</p>'
+        : completedBooks
+            .map(
+              book => `
+        <div class="book-card premium-card" data-book-id="${book.id}">
+          <div class="book-info">
+            <h4>${book.title}</h4>
+            <p><strong>Penulis:</strong> ${book.author}</p>
+            <p><strong>Kategori:</strong> ${getBookCategoryLabel(
+              book.category
+            )}</p>
+            ${
+              book.description
+                ? `<p class="book-description">${book.description}</p>`
+                : ''
+            }
+            <p class="book-date">Selesai: ${new Date(
+              book.updatedAt || book.updated_at
+            ).toLocaleDateString('id-ID')}</p>
+          </div>
+          <div class="book-actions">
+            <button class="move-btn premium-action-btn" data-action="toggle">
+              <i class="fas fa-undo"></i> Kembalikan
+            </button>
+            <button class="action-btn edit-btn premium-action-btn" data-action="edit">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="action-btn delete-btn premium-action-btn" data-action="delete">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
         </div>
-      </div>
-    `
-          )
-          .join('');
+      `
+            )
+            .join('');
 
-  completedContainer.innerHTML =
-    completedBooks.length === 0
-      ? '<p class="empty-state premium-empty-state">Belum ada buku yang selesai dibaca</p>'
-      : completedBooks
-          .map(
-            book => `
-      <div class="book-card premium-card" data-book-id="${book.id}">
-        <div class="book-info">
-          <h4>${book.title}</h4>
-          <p><strong>Penulis:</strong> ${book.author}</p>
-          <p><strong>Kategori:</strong> ${getBookCategoryLabel(
-            book.category
-          )}</p>
-          ${
-            book.description
-              ? `<p class="book-description">${book.description}</p>`
-              : ''
-          }
-          <p class="book-date">Selesai: ${new Date(
-            book.updatedAt
-          ).toLocaleDateString('id-ID')}</p>
-        </div>
-        <div class="book-actions">
-          <button class="move-btn premium-action-btn" data-action="toggle">
-            <i class="fas fa-undo"></i> Kembalikan
-          </button>
-          <button class="action-btn edit-btn premium-action-btn" data-action="edit">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="action-btn delete-btn premium-action-btn" data-action="delete">
-            <i class="fas fa-trash"></i>
-          </button>
-        </div>
-      </div>
-    `
-          )
-          .join('');
+    // Remove old event listeners and add new one (event delegation)
+    const bookshelf = document.querySelector('.bookshelf');
+    if (bookshelf) {
+      const newBookshelf = bookshelf.cloneNode(true);
+      bookshelf.parentNode.replaceChild(newBookshelf, bookshelf);
+      document
+        .querySelector('.bookshelf')
+        .addEventListener('click', handleBookAction);
+    }
 
-  // Event delegation
-  document
-    .querySelector('.bookshelf')
-    .addEventListener('click', handleBookAction);
+    // Add book button
+    const addBookBtn = document.getElementById('add-book');
+    if (addBookBtn) {
+      // Remove any existing event listeners
+      const newBtn = addBookBtn.cloneNode(true);
+      addBookBtn.parentNode.replaceChild(newBtn, addBookBtn);
 
-  // Add book
-  const addBookBtn = document.getElementById('add-book');
-  if (addBookBtn) {
-    // Remove any existing event listeners
-    const newBtn = addBookBtn.cloneNode(true);
-    addBookBtn.parentNode.replaceChild(newBtn, addBookBtn);
+      // Add new event listener
+      document
+        .getElementById('add-book')
+        .addEventListener('click', () => ModalManager.showBookModal());
+    }
+  } catch (error) {
+    console.error('Error initializing books page:', error);
+    if (readingContainer) {
+      readingContainer.innerHTML = `
+        <p class="empty-state premium-empty-state">
+          <i class="fas fa-exclamation-triangle"></i>
+          Gagal memuat buku: ${error.message}
+        </p>
+      `;
+    }
+  } finally {
+    booksPageInitialized = false;
+  }
+}
 
-    // Add new event listener
-    document
-      .getElementById('add-book')
-      .addEventListener('click', () => ModalManager.showBookModal());
+// Helper function to reload books page
+async function reloadBooksPage() {
+  if (window.location.hash.slice(2) === 'rak-buku') {
+    await initializeBooksPage();
   }
 }
 
@@ -1815,60 +2525,103 @@ function handleSessionAction(event) {
 }
 
 // Helper functions
-function editNote(id) {
-  const note = DataManager.getNotes().find(n => n.id === id);
-  if (note) ModalManager.showNoteModal(note);
+async function editNote(id) {
+  try {
+    const notes = await DataManager.getNotes();
+    const note = notes.find(n => n.id === id);
+    if (note) ModalManager.showNoteModal(note);
+  } catch (error) {
+    console.error('Error loading note for edit:', error);
+    showToast('Gagal memuat catatan', 'error');
+  }
 }
 
-function deleteNote(id) {
+async function deleteNote(id) {
   if (confirm('Hapus catatan ini?')) {
-    DataManager.deleteNote(id);
-    showToast('Catatan dihapus!', 'success');
-    loadPage();
+    try {
+      await DataManager.deleteNote(id);
+      showToast('Catatan dihapus!', 'success');
+      await reloadNotesPage();
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      showToast('Gagal menghapus catatan', 'error');
+    }
   }
 }
 
-function editBook(id) {
-  const book = DataManager.getBooks().find(b => b.id === id);
-  if (book) ModalManager.showBookModal(book);
+async function editBook(id) {
+  try {
+    const books = await DataManager.getBooks();
+    const book = books.find(b => b.id === id);
+    if (book) ModalManager.showBookModal(book);
+  } catch (error) {
+    console.error('Error loading book for edit:', error);
+    showToast('Gagal memuat buku', 'error');
+  }
 }
 
-function deleteBook(id) {
+async function deleteBook(id) {
   if (confirm('Hapus buku ini?')) {
-    DataManager.deleteBook(id);
-    showToast('Buku dihapus!', 'success');
-    loadPage();
+    try {
+      await DataManager.deleteBook(id);
+      showToast('Buku dihapus!', 'success');
+      await reloadBooksPage();
+    } catch (error) {
+      console.error('Error deleting book:', error);
+      showToast('Gagal menghapus buku', 'error');
+    }
   }
 }
 
-function toggleBookStatus(id) {
-  DataManager.toggleBookStatus(id);
-  showToast('Status buku diperbarui!', 'success');
-  loadPage();
+async function toggleBookStatus(id) {
+  try {
+    await DataManager.toggleBookStatus(id);
+    showToast('Status buku diperbarui!', 'success');
+    await reloadBooksPage();
+  } catch (error) {
+    console.error('Error toggling book status:', error);
+    showToast('Gagal mengubah status buku', 'error');
+  }
 }
 
-function startSession(id) {
-  SessionManager.startSession(id);
-  showToast('Sesi dimulai!', 'success');
-  loadPage();
+async function startSession(id) {
+  try {
+    await SessionManager.startSession(id);
+    showToast('Sesi dimulai!', 'success');
+    await reloadSessionsPage();
+  } catch (error) {
+    console.error('Error starting session:', error);
+    showToast('Gagal memulai sesi', 'error');
+  }
 }
 
-function completeSession(id) {
-  SessionManager.completeSession(id);
-  showToast('Sesi diselesaikan!', 'success');
-  loadPage();
+async function completeSession(id) {
+  try {
+    await SessionManager.completeSession(id);
+    showToast('Sesi diselesaikan!', 'success');
+    await reloadSessionsPage();
+  } catch (error) {
+    console.error('Error completing session:', error);
+    showToast('Gagal menyelesaikan sesi', 'error');
+  }
 }
 
-function editSession(id) {
-  const session = SessionManager.getSessions().find(s => s.id === id);
+async function editSession(id) {
+  const sessions = await SessionManager.getSessions();
+  const session = sessions.find(s => s.id === id);
   if (session) ModalManager.showSessionModal(session);
 }
 
-function deleteSession(id) {
+async function deleteSession(id) {
   if (confirm('Hapus sesi ini?')) {
-    SessionManager.deleteSession(id);
-    showToast('Sesi dihapus!', 'success');
-    loadPage();
+    try {
+      await SessionManager.deleteSession(id);
+      showToast('Sesi dihapus!', 'success');
+      await reloadSessionsPage();
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      showToast('Gagal menghapus sesi', 'error');
+    }
   }
 }
 
@@ -1951,6 +2704,30 @@ function injectComponentStyles() {
     .start-btn:hover { background: #00a085; }
     .complete-btn { background: var(--primary); color: white; }
     .complete-btn:hover { background: var(--secondary); }
+    
+    /* Stats Section Styles */
+    .stats-overview { padding: 3rem 0; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .stat-card { background: white; border-radius: 16px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.08); transition: transform 0.3s ease, box-shadow 0.3s ease; }
+    .stat-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.12); }
+    .stat-icon { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #74b9ff, #0984e3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .stat-icon i { font-size: 1.5rem; color: white; }
+    .stat-info h3 { font-size: 1.8rem; font-weight: 700; color: #2d3436; margin: 0; }
+    .stat-info p { font-size: 0.9rem; color: #636e72; margin: 0.25rem 0 0 0; }
+    
+    /* Weekly Chart Styles */
+    .weekly-stats-container { background: white; border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+    .weekly-chart { min-height: 180px; }
+    .chart-loading { text-align: center; padding: 2rem; color: #636e72; }
+    .chart-bar:hover { opacity: 0.9; transform: scaleY(1.05); }
+    
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+      .stat-card { padding: 1rem; flex-direction: column; text-align: center; }
+      .stat-icon { width: 50px; height: 50px; }
+      .stat-icon i { font-size: 1.2rem; }
+      .stat-info h3 { font-size: 1.4rem; }
+    }
   `;
   const existing = document.getElementById('component-styles');
   if (existing) existing.remove();
@@ -1966,38 +2743,70 @@ function updateActiveNav() {
 }
 
 // Initialize app
-// Initialize offline manager
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('FocusMode Premium App Initialized');
+  console.log('FocusMode Premium App Initializing...');
 
-  // Setup offline manager
-  await OfflineManager.initialize();
+  const loadingIndicator = document.getElementById('loading-indicator');
 
-  // Check auth
-  checkAuth();
+  // Helper to hide loading
+  const hideLoading = () => {
+    if (loadingIndicator) {
+      loadingIndicator.classList.add('hidden');
+    }
+  };
 
-  // Initialize notifications and schedule reminders
-  await NotificationManager.requestPermission();
-  const settings = NotificationManager.getSettings();
-  if (settings.dailyReminders) {
-    NotificationManager.scheduleDailyReminder(8, 0);
+  // Set a maximum loading timeout (safety net)
+  const loadingTimeout = setTimeout(() => {
+    console.log('Loading timeout reached, forcing hide');
+    hideLoading();
+  }, 3000);
+
+  try {
+    // Setup offline manager (non-blocking)
+    try {
+      await OfflineManager.initialize();
+    } catch (offlineError) {
+      console.warn('Offline manager failed to initialize:', offlineError);
+    }
+
+    // Check auth - this will show either auth page or main app
+    checkAuth();
+
+    // Initialize notifications (non-blocking)
+    try {
+      await NotificationManager.requestPermission();
+      const settings = NotificationManager.getSettings();
+      if (settings.dailyReminders) {
+        NotificationManager.scheduleDailyReminder(8, 0);
+      }
+      console.log('Notification system initialized');
+    } catch (notifError) {
+      console.warn('Notification setup failed:', notifError);
+    }
+
+    // Create initial backup after delay
+    setTimeout(() => {
+      try {
+        OfflineManager.backupData();
+      } catch (backupError) {
+        console.warn('Backup failed:', backupError);
+      }
+    }, 5000);
+
+    console.log('FocusMode Premium App Initialized');
+  } catch (error) {
+    console.error('App initialization error:', error);
+    // Show auth page as fallback
+    showAuthPage();
+  } finally {
+    // Clear the safety timeout and hide loading
+    clearTimeout(loadingTimeout);
+    hideLoading();
   }
-  console.log('Notification system initialized');
-
-  // Create initial backup
-  setTimeout(() => {
-    OfflineManager.backupData();
-  }, 5000);
 });
 
-window.addEventListener('hashchange', () => {
-  if (currentUser) {
-    loadPage();
-    updateActiveNav();
+window.addEventListener('hashchange', async () => {
+  if (currentUser && !isLoadingPage) {
+    await loadPage();
   }
 });
-
-// Hide loading indicator after 2 seconds
-setTimeout(() => {
-  document.getElementById('loading-indicator').classList.add('hidden');
-}, 2000);

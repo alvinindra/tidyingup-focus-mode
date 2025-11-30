@@ -235,14 +235,19 @@ app.post('/api/sessions', authenticateToken, async (req, res) => {
       description,
       subject,
       duration,
-      status,
+      status: status || 'planned',
     });
 
     console.log('✅ Session created with ID:', sessionId);
 
+    // Fetch the created session to return full data
+    const sessions = await Database.getSessionsByUserId(req.user.id);
+    const createdSession = sessions.find(s => s.id === sessionId);
+
     res.status(201).json({
       message: 'Session created successfully',
       id: sessionId,
+      session: createdSession,
     });
   } catch (error) {
     console.error('Create session error:', error);
@@ -255,14 +260,26 @@ app.put('/api/sessions/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, description, subject, duration, status } = req.body;
 
-    await Database.updateSession(id, {
-      title,
-      description,
-      subject,
-      duration,
-      status,
-    });
+    // Verify session belongs to user
+    const sessions = await Database.getSessionsByUserId(req.user.id);
+    const session = sessions.find(s => s.id === parseInt(id));
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
 
+    await Database.updateSession(
+      id,
+      {
+        title,
+        description,
+        subject,
+        duration,
+        status,
+      },
+      req.user.id
+    );
+
+    console.log('✅ Session updated in database:', id);
     res.json({ message: 'Session updated successfully' });
   } catch (error) {
     console.error('Update session error:', error);
@@ -273,7 +290,16 @@ app.put('/api/sessions/:id', authenticateToken, async (req, res) => {
 app.delete('/api/sessions/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await Database.deleteSession(id);
+
+    // Verify session belongs to user
+    const sessions = await Database.getSessionsByUserId(req.user.id);
+    const session = sessions.find(s => s.id === parseInt(id));
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    await Database.deleteSession(id, req.user.id);
+    console.log('✅ Session deleted from database:', id);
     res.json({ message: 'Session deleted successfully' });
   } catch (error) {
     console.error('Delete session error:', error);
@@ -284,7 +310,16 @@ app.delete('/api/sessions/:id', authenticateToken, async (req, res) => {
 app.post('/api/sessions/:id/start', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await Database.startSession(id);
+
+    // Verify session belongs to user
+    const sessions = await Database.getSessionsByUserId(req.user.id);
+    const session = sessions.find(s => s.id === parseInt(id));
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    await Database.startSession(id, req.user.id);
+    console.log('✅ Session started in database:', id);
     res.json({ message: 'Session started successfully' });
   } catch (error) {
     console.error('Start session error:', error);
@@ -295,7 +330,26 @@ app.post('/api/sessions/:id/start', authenticateToken, async (req, res) => {
 app.post('/api/sessions/:id/complete', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await Database.completeSession(id);
+
+    // Verify session belongs to user
+    const sessions = await Database.getSessionsByUserId(req.user.id);
+    const session = sessions.find(s => s.id === parseInt(id));
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    await Database.completeSession(id, req.user.id);
+
+    // Update study stats
+    const sessionDuration = session.duration || 0;
+    await Database.updateStudyStats(req.user.id, sessionDuration, true);
+
+    console.log(
+      '✅ Session completed in database:',
+      id,
+      'Duration:',
+      sessionDuration
+    );
     res.json({ message: 'Session completed successfully' });
   } catch (error) {
     console.error('Complete session error:', error);
@@ -319,12 +373,17 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
   try {
     const { title, content, category } = req.body;
 
+    console.log('📝 Creating note for user:', req.user.id);
+    console.log('📝 Note data:', { title, content, category });
+
     const noteId = await Database.createNote({
       user_id: req.user.id,
       title,
       content,
-      category,
+      category: category || 'study',
     });
+
+    console.log('✅ Note created with ID:', noteId);
 
     res.status(201).json({
       message: 'Note created successfully',
@@ -341,12 +400,24 @@ app.put('/api/notes/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, content, category } = req.body;
 
-    await Database.updateNote(id, {
-      title,
-      content,
-      category,
-    });
+    // Verify note belongs to user
+    const notes = await Database.getNotesByUserId(req.user.id);
+    const note = notes.find(n => n.id === parseInt(id));
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
 
+    await Database.updateNote(
+      id,
+      {
+        title,
+        content,
+        category,
+      },
+      req.user.id
+    );
+
+    console.log('✅ Note updated in database:', id);
     res.json({ message: 'Note updated successfully' });
   } catch (error) {
     console.error('Update note error:', error);
@@ -357,7 +428,16 @@ app.put('/api/notes/:id', authenticateToken, async (req, res) => {
 app.delete('/api/notes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await Database.deleteNote(id);
+
+    // Verify note belongs to user
+    const notes = await Database.getNotesByUserId(req.user.id);
+    const note = notes.find(n => n.id === parseInt(id));
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    await Database.deleteNote(id, req.user.id);
+    console.log('✅ Note deleted from database:', id);
     res.json({ message: 'Note deleted successfully' });
   } catch (error) {
     console.error('Delete note error:', error);
@@ -380,14 +460,19 @@ app.post('/api/books', authenticateToken, async (req, res) => {
   try {
     const { title, author, description, category, is_complete } = req.body;
 
+    console.log('📚 Creating book for user:', req.user.id);
+    console.log('📚 Book data:', { title, author, description, category });
+
     const bookId = await Database.createBook({
       user_id: req.user.id,
       title,
       author,
       description,
-      category,
-      is_complete,
+      category: category || 'academic',
+      is_complete: is_complete || false,
     });
+
+    console.log('✅ Book created with ID:', bookId);
 
     res.status(201).json({
       message: 'Book created successfully',
@@ -404,14 +489,26 @@ app.put('/api/books/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, author, description, category, is_complete } = req.body;
 
-    await Database.updateBook(id, {
-      title,
-      author,
-      description,
-      category,
-      is_complete,
-    });
+    // Verify book belongs to user
+    const books = await Database.getBooksByUserId(req.user.id);
+    const book = books.find(b => b.id === parseInt(id));
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
 
+    await Database.updateBook(
+      id,
+      {
+        title,
+        author,
+        description,
+        category,
+        is_complete,
+      },
+      req.user.id
+    );
+
+    console.log('✅ Book updated in database:', id);
     res.json({ message: 'Book updated successfully' });
   } catch (error) {
     console.error('Update book error:', error);
@@ -422,7 +519,16 @@ app.put('/api/books/:id', authenticateToken, async (req, res) => {
 app.delete('/api/books/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await Database.deleteBook(id);
+
+    // Verify book belongs to user
+    const books = await Database.getBooksByUserId(req.user.id);
+    const book = books.find(b => b.id === parseInt(id));
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+
+    await Database.deleteBook(id, req.user.id);
+    console.log('✅ Book deleted from database:', id);
     res.json({ message: 'Book deleted successfully' });
   } catch (error) {
     console.error('Delete book error:', error);
@@ -433,7 +539,16 @@ app.delete('/api/books/:id', authenticateToken, async (req, res) => {
 app.post('/api/books/:id/toggle', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await Database.toggleBookStatus(id);
+
+    // Verify book belongs to user
+    const books = await Database.getBooksByUserId(req.user.id);
+    const book = books.find(b => b.id === parseInt(id));
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+
+    await Database.toggleBookStatus(id, req.user.id);
+    console.log('✅ Book status toggled in database:', id);
     res.json({ message: 'Book status updated successfully' });
   } catch (error) {
     console.error('Toggle book error:', error);
@@ -466,7 +581,21 @@ app.post('/api/timers', authenticateToken, async (req, res) => {
 app.post('/api/timers/:id/complete', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const { duration } = req.body; // Duration in minutes
+
     await Database.completeFocusTimer(id);
+
+    // Update study stats with the timer duration
+    if (duration && duration > 0) {
+      await Database.updateStudyStats(req.user.id, duration, true);
+      console.log(
+        '📊 Updated study stats for user:',
+        req.user.id,
+        'Duration:',
+        duration
+      );
+    }
+
     res.json({ message: 'Timer completed successfully' });
   } catch (error) {
     console.error('Complete timer error:', error);
@@ -485,12 +614,102 @@ app.get('/api/timers', authenticateToken, async (req, res) => {
 });
 
 // Statistics routes
+app.get('/api/stats/today', authenticateToken, async (req, res) => {
+  try {
+    const todayStats = await Database.getTodayStats(req.user.id);
+    console.log('📊 Today stats for user:', req.user.id, todayStats);
+    res.json(todayStats);
+  } catch (error) {
+    console.error('Get today stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/api/stats/weekly', authenticateToken, async (req, res) => {
   try {
     const weeklyReport = await Database.getWeeklyReport(req.user.id);
+    console.log('📊 Weekly stats for user:', req.user.id, weeklyReport);
     res.json(weeklyReport);
   } catch (error) {
     console.error('Get weekly stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/stats/summary', authenticateToken, async (req, res) => {
+  try {
+    const dashboardData = await Database.getDashboardData(req.user.id);
+    const todayStats = await Database.getTodayStats(req.user.id);
+    const weeklyReport = await Database.getWeeklyReport(req.user.id);
+    const currentStreak = await Database.getCurrentStreak(req.user.id);
+
+    // Calculate weekly totals
+    const weeklyTotalMinutes = weeklyReport.reduce(
+      (sum, day) => sum + (day.total_minutes || 0),
+      0
+    );
+    const weeklyTotalSessions = weeklyReport.reduce(
+      (sum, day) => sum + (day.sessions_count || 0),
+      0
+    );
+
+    res.json({
+      user: {
+        name: dashboardData?.name,
+        email: dashboardData?.email,
+      },
+      overview: {
+        completed_sessions: dashboardData?.completed_sessions || 0,
+        total_notes: dashboardData?.total_notes || 0,
+        total_books: dashboardData?.total_books || 0,
+      },
+      today: {
+        total_minutes: parseInt(todayStats?.total_minutes) || 0,
+        total_sessions: parseInt(todayStats?.total_sessions) || 0,
+      },
+      weekly: {
+        total_minutes: weeklyTotalMinutes,
+        total_sessions: weeklyTotalSessions,
+        daily_breakdown: weeklyReport,
+      },
+      streak: currentStreak,
+    });
+  } catch (error) {
+    console.error('Get stats summary error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/stats/streak', authenticateToken, async (req, res) => {
+  try {
+    const streak = await Database.getCurrentStreak(req.user.id);
+    console.log('📊 Current streak for user:', req.user.id, streak);
+    res.json({ streak_days: streak });
+  } catch (error) {
+    console.error('Get streak error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/stats/monthly', authenticateToken, async (req, res) => {
+  try {
+    const monthlyStats = await Database.getMonthlyStats(req.user.id);
+    console.log('📊 Monthly stats for user:', req.user.id, monthlyStats);
+    res.json(monthlyStats);
+  } catch (error) {
+    console.error('Get monthly stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/stats/history', authenticateToken, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const studyStats = await Database.getStudyStats(req.user.id, days);
+    console.log('📊 Study history for user:', req.user.id, 'days:', days);
+    res.json(studyStats);
+  } catch (error) {
+    console.error('Get study history error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

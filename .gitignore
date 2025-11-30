@@ -96,6 +96,3 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
-
-# Service worker
-sw.js
